@@ -1,0 +1,150 @@
+/*
+ * Markbeam design tokens.
+ *
+ * Every colour, space, radius and duration in the app comes from here. The two themes
+ * are the same token names with different ramps — never add a `[data-theme="dark"]`
+ * override to a component stylesheet, add a token.
+ */
+
+:root {
+  /* type */
+  --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono: 'Commit Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+
+  /* space — 4px base */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* radius */
+  --r-sm: 4px;
+  --r-md: 7px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+
+  /* motion */
+  --dur-fast: 110ms;
+  --dur: 200ms;
+  --dur-slow: 420ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* structure */
+  --toolbar-h: 48px;
+  --statusbar-h: 26px;
+  --divider-hit: 11px;
+
+  --z-divider: 10;
+  --z-toast: 60;
+  --z-dialog: 70;
+}
+
+/* ---------- dark (default) ---------- */
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --void: #08090c;
+  --surface-1: #0e1015;
+  --surface-2: #141822;
+  --surface-3: #1b2130;
+  --surface-hover: #202839;
+
+  --line: #232b3a;
+  --line-strong: #33405a;
+
+  --text-1: #e8edf5;
+  --text-2: #a9b4c6;
+  --text-3: #6b7889;
+
+  --beam: #4de1d0;
+  --beam-soft: #2a8f86;
+  --beam-glow: rgb(77 225 208 / 32%);
+  --beam-wash: rgb(77 225 208 / 8%);
+  --on-beam: #04120f;
+
+  /* A highlight marks a few words, so it needs more presence than --beam-wash,
+     which is tuned for large surfaces. Measured: this lifts the mark 24/255 of
+     perceived luminance off the pane, where the wash managed 14 in dark and only
+     9.6 in light. */
+  --mark-bg: rgb(77 225 208 / 14%);
+
+  --danger: #ff6b6b;
+
+  /* Callout accents. Tuned to the Beam palette rather than transcribed from GitHub —
+     the alerts should look like this product, not like a reskin of theirs. */
+  --alert-note: #5b9dff;
+  --alert-tip: #4ec98a;
+  --alert-important: #a98bff;
+  --alert-warning: #e0a33a;
+  --alert-caution: #ff6b6b;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow-2: 0 12px 32px rgb(0 0 0 / 55%);
+
+  /* the editor sits a touch darker than the preview: source dim, preview lit */
+  --editor-bg: var(--void);
+  --preview-bg: var(--surface-1);
+}
+
+/* ---------- light ---------- */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --void: #f4f6f8;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f5;
+  --surface-3: #e3e8ee;
+  --surface-hover: #dde3ea;
+
+  --line: #dde3ea;
+  --line-strong: #bcc7d4;
+
+  --text-1: #0d1219;
+  --text-2: #47535f;
+  --text-3: #7a8694;
+
+  /* darkened so the accent still passes contrast on a white surface */
+  --beam: #0d9488;
+  --beam-soft: #5eccc2;
+  --beam-glow: rgb(13 148 136 / 26%);
+  --beam-wash: rgb(13 148 136 / 7%);
+  --on-beam: #ffffff;
+
+  /* Stronger than the dark ramp: the same alpha over white shifts luminance
+     far less than it does over near-black. */
+  --mark-bg: rgb(13 148 136 / 18%);
+
+  --danger: #cf222e;
+
+  /* Darkened for contrast on a white surface. */
+  --alert-note: #1f6feb;
+  --alert-tip: #167f4a;
+  --alert-important: #7a4ddb;
+  --alert-warning: #9a6b00;
+  --alert-caution: #cf222e;
+
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 8%);
+  --shadow-2: 0 12px 32px rgb(16 24 40 / 14%);
+
+  --editor-bg: var(--void);
+  --preview-bg: var(--surface-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

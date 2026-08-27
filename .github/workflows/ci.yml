@@ -1,0 +1,174 @@
+name: CI
+
+# Every push and pull request is verified. Deployment to Vercel happens only after
+# verification passes, and only from main — the test suite is the gate between a change
+# and the live site.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push supersedes an in-flight run for the same ref, except on main where we
+  # let deployments finish rather than leaving a half-deployed state.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the build actually produced the app
+        run: |
+          test -f dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
+          grep -q "<title>Markbeam</title>" dist/index.html \
+            || { echo "::error::built page is not Markbeam"; exit 1; }
+          echo "dist/ contents:"; ls -la dist
+
+      # The suites drive a real browser: Monaco, Mermaid rendering and canvas
+      # rasterisation cannot be meaningfully tested without one. Chrome is preinstalled
+      # on the GitHub runner image.
+      - name: Start dev server
+        run: |
+          npm run dev -- --port 5173 --strictPort > /tmp/vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:5173/; then
+              echo "dev server ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::dev server never came up"; cat /tmp/vite.log; exit 1
+
+      - name: Test
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          MARKBEAM_URL: http://localhost:5173/
+        run: npm test
+
+      - name: Dev server log on failure
+        if: failure()
+        run: cat /tmp/vite.log || true
+
+  # Whether a deploy token is configured. Referenced by the deploy job's `if`, so that a
+  # repository without secrets gets a green run with deploy skipped, rather than a
+  # permanently red one that cannot report whether the code itself is sound.
+  check-secrets:
+    name: Check deploy configuration
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.probe.outputs.configured }}
+    steps:
+      - id: probe
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VERCEL_TOKEN is not set, so deployment is skipped. Add it in Settings > Secrets and variables > Actions to enable automatic deploys."
+          fi
+
+  deploy:
+    name: Deploy to Vercel
+    needs: [verify, check-secrets]
+    if: needs.check-secrets.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      # The production alias, not the per-deployment URL. Deployment URLs on a team sit
+      # behind Vercel's Deployment Protection, so the link in the Environments tab would
+      # bounce a reader to an SSO page instead of the site.
+      url: https://markbeam.vercel.app
+
+    env:
+      VERCEL_SCOPE: dev-projects-816
+      PRODUCTION_URL: https://markbeam.vercel.app
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Deploy
+        id: deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm i -g vercel@latest
+          # --scope takes the team *slug*, not the org id. Passing the id produced
+          # "Not able to load user ... User not found (404)", because the CLI could not
+          # resolve it to a team. The slug is not sensitive — it already appears in every
+          # deployment URL — so it lives here rather than in a secret.
+          vercel pull --yes --environment=production --scope="$VERCEL_SCOPE" --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel build --prod --token="${{ secrets.VERCEL_TOKEN }}"
+          url=$(vercel deploy --prebuilt --prod --scope="$VERCEL_SCOPE" --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
+
+      # Smoke-tests the production alias, NOT the deployment URL from the step above.
+      #
+      # Deployment-specific URLs (markbeam-<hash>-<team>.vercel.app) are protected: an
+      # anonymous request 302s to vercel.com/sso-api once protection settles, and 404s in
+      # the window immediately after deploy — which is exactly when CI asks. That produced
+      # "deployment returned 404" on a deploy that was in fact healthy and already aliased.
+      # The alias is public, and it is the surface a user actually loads.
+      - name: Smoke-test the live site
+        run: |
+          code=""
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /tmp/live.html -w "%{http_code}" "$PRODUCTION_URL" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "alias served 200 after ${i} attempt(s)"
+              break
+            fi
+            echo "attempt ${i}: $code, retrying"
+            sleep 3
+          done
+
+          if [ "$code" != "200" ]; then
+            echo "::error::$PRODUCTION_URL returned $code"
+            echo "--- first 40 lines of response ---"
+            head -n 40 /tmp/live.html || true
+            exit 1
+          fi
+
+          if ! grep -q "<title>Markbeam</title>" /tmp/live.html; then
+            echo "::error::deployed page is not Markbeam"
+            head -n 40 /tmp/live.html || true
+            exit 1
+          fi
+
+          # Written as an explicit `if` rather than `grep -q ... && { ... }`: in the healthy
+          # case that grep is *expected* to fail, and leaving the step's exit status riding
+          # on it is a trap for whoever edits this next.
+          if grep -q "googletagmanager" /tmp/live.html; then
+            echo "::error::third-party analytics present in deployed page"
+            exit 1
+          fi
+
+          echo "Live and healthy: $PRODUCTION_URL"

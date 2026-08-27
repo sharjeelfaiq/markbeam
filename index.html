@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Markbeam is an online Markdown editor with live preview, Mermaid diagrams and PDF export.">
+    <meta name="color-scheme" content="dark light">
+
+    <script>
+      /*
+       * Pre-paint theme resolution. Runs before first paint so a reload never flashes
+       * the wrong theme. Deliberately duplicates logic in src/theme.js — this has to be
+       * inline and synchronous, it cannot wait for a module.
+       */
+      (function () {
+        try {
+          // Falls back to the pre-rename key so an existing visitor does not get a
+          // theme flash on their first load after the storage change.
+          var stored = localStorage.getItem('markbeam:theme')
+            || localStorage.getItem('com.markdownlivepreview_theme');
+
+          // Older builds wrote booleans here.
+          if (stored === 'true') { stored = 'dark'; }
+          if (stored === 'false') { stored = 'light'; }
+
+          var resolved = stored;
+          if (resolved !== 'dark' && resolved !== 'light') {
+            // unset, or an explicit 'system' preference
+            resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', resolved);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+
+    <!-- SVG first so the mark stays crisp on hidpi tabs; the PNG is the fallback for
+         browsers that still do not take an SVG icon. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <script type="module" src="/src/main.js"></script>
+    <title>Markbeam</title>
+  </head>
+
+  <body data-view="split">
+    <header class="toolbar">
+      <a class="brand" href="/" aria-label="Markbeam home">
+        <span class="brand__mark" aria-hidden="true"></span>
+        Markbeam
+      </a>
+
+      <input
+        id="doc-title"
+        class="doc-title"
+        type="text"
+        value="Untitled"
+        aria-label="Document title"
+        spellcheck="false"
+        autocomplete="off">
+
+      <span class="toolbar__spacer"></span>
+
+      <div class="segmented" role="group" aria-label="View mode">
+        <button class="segmented__item" type="button" data-view-mode="editor" aria-pressed="false" title="Editor only (Ctrl+1)">Edit</button>
+        <button class="segmented__item" type="button" data-view-mode="split" aria-pressed="true" title="Split view (Ctrl+2)">Split</button>
+        <button class="segmented__item" type="button" data-view-mode="preview" aria-pressed="false" title="Preview only (Ctrl+3)">Read</button>
+      </div>
+
+      <!-- Carries `segmented` so it inherits the pressed-state beam colour and, with it,
+           the max-width:768px rule that hides the view-mode control. That is right rather
+           than convenient: below 768px only one pane is ever on screen, so there is
+           nothing to sync. -->
+      <div class="segmented" role="group" aria-label="Scroll">
+        <button id="sync-button" class="segmented__item" type="button" aria-pressed="false" title="Sync scroll">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4.5 2.8v10.4M2.6 4.7l1.9-1.9 1.9 1.9"/>
+            <path d="M11.5 13.2V2.8M9.6 11.3l1.9 1.9 1.9-1.9"/>
+          </svg>
+          Sync
+        </button>
+      </div>
+
+      <div class="toolbar__group">
+        <button id="copy-button" class="btn" type="button" title="Copy Markdown source">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/>
+            <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1"/>
+          </svg>
+          <span class="toolbar__label">Copy</span>
+        </button>
+
+        <button id="export-button" class="btn btn--accent" type="button" title="Export as PDF (Ctrl+S)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <path d="M8 1.8v8.4M4.8 7l3.2 3.2L11.2 7"/>
+            <path d="M2.5 12.2v1.3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.3"/>
+          </svg>
+          <span class="toolbar__label">PDF</span>
+        </button>
+
+        <!-- Destructive, so grouped with the utility buttons rather than beside Copy/PDF. -->
+        <button id="clear-button" class="btn btn--icon" type="button" title="Clear document" aria-label="Clear document">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9.1 1.8H4.2a1 1 0 0 0-1 1v10.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V5.7Z"/>
+            <path d="M9.1 1.8v3.9h3.7"/>
+            <path d="M6.5 8.9l3 3M9.5 8.9l-3 3"/>
+          </svg>
+        </button>
+
+        <button id="menu-button" class="btn btn--icon" type="button" title="Commands (Ctrl+K)" aria-label="Open command palette">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+          </svg>
+        </button>
+
+        <button id="theme-button" class="btn btn--icon" type="button" aria-label="Switch theme">
+          <svg class="icon-dark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <path d="M13.4 9.6A5.6 5.6 0 0 1 6.4 2.6a5.8 5.8 0 1 0 7 7Z"/>
+          </svg>
+          <svg class="icon-light" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+            <circle cx="8" cy="8" r="3.1"/>
+            <path d="M8 1.3v1.6M8 13.1v1.6M14.7 8h-1.6M2.9 8H1.3M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1M12.7 12.7l-1.1-1.1M4.4 4.4 3.3 3.3"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="pane-tabs" role="group" aria-label="Pane">
+      <button class="pane-tabs__item" type="button" data-view-mode="editor" aria-pressed="true">Write</button>
+      <button class="pane-tabs__item" type="button" data-view-mode="preview" aria-pressed="false">Preview</button>
+    </nav>
+
+    <main class="workspace" id="workspace">
+      <section class="pane pane--editor" id="edit" aria-label="Markdown source">
+        <div id="editor"></div>
+      </section>
+
+      <div
+        class="beam"
+        id="split-divider"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panes"
+        aria-valuenow="50"
+        aria-valuemin="10"
+        aria-valuemax="90"
+        tabindex="0"></div>
+
+      <section class="pane pane--preview" id="preview" aria-label="Preview">
+        <div class="preview-body" id="preview-wrapper">
+          <div id="output" class="markdown-body mb-md"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span class="statusbar__item" id="status-words">0 words</span>
+      <span class="statusbar__item" id="status-chars">0 characters</span>
+      <span class="statusbar__item" id="status-read">0 min read</span>
+      <span class="statusbar__spacer"></span>
+      <span class="statusbar__item" id="status-cursor">Ln 1, Col 1</span>
+      <span class="statusbar__item">
+        <span class="save-dot" id="save-dot" data-state="saved" aria-hidden="true"></span>
+        <span id="save-label">Saved</span>
+      </span>
+
+      <!-- Inline SVG rather than a shields.io image: an external badge would be a
+           third-party request on every page load, which is exactly what was removed
+           when the analytics tag, the CDN script and Google Fonts went. -->
+      <a
+        class="statusbar__item source-link"
+        id="source-link"
+        href="https://github.com/sharjeelfaiq/markbeam"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="View source on GitHub">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+        </svg>
+        Source
+      </a>
+    </footer>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+    <dialog class="sheet" id="palette" aria-label="Command palette">
+      <input
+        class="sheet__input"
+        id="palette-input"
+        type="text"
+        placeholder="Type a command…"
+        aria-label="Search commands"
+        autocomplete="off"
+        spellcheck="false">
+      <ul class="sheet__list" id="palette-list" role="listbox" aria-label="Commands"></ul>
+    </dialog>
+  </body>
+</html>

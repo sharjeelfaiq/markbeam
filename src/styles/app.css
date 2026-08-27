@@ -1,0 +1,616 @@
+/* Markbeam application chrome. Preview typography lives in public/css/preview.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  display: grid;
+  grid-template-rows: var(--toolbar-h) 1fr var(--statusbar-h);
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--void);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--beam);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ============================ toolbar ============================ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-3);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-right: var(--sp-1);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-1);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* the mark: a small beam, echoing the divider */
+.brand__mark {
+  width: 3px;
+  height: 17px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(to bottom, transparent, var(--beam), transparent);
+  box-shadow: 0 0 8px var(--beam-glow);
+}
+
+.doc-title {
+  flex: 0 1 220px;
+  min-width: 80px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.doc-title:hover {
+  background: var(--surface-2);
+}
+
+.doc-title:focus {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--text-1);
+  outline: none;
+}
+
+.toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* ------- buttons ------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: 30px;
+  padding: 0 var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.btn:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.btn:active {
+  background: var(--surface-3);
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--icon {
+  width: 30px;
+  padding: 0;
+}
+
+.btn--accent {
+  border-color: var(--beam-soft);
+  color: var(--beam);
+}
+
+.btn--accent:hover {
+  background: var(--beam-wash);
+  color: var(--beam);
+}
+
+.btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* ------- segmented view-mode control ------- */
+
+.segmented {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.segmented__item:hover {
+  color: var(--text-1);
+}
+
+.segmented__item[aria-pressed='true'] {
+  background: var(--surface-1);
+  color: var(--beam);
+  box-shadow: var(--shadow-1);
+}
+
+.segmented__item svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Sync scroll has nothing to do outside split view. Same dimming as `.btn[disabled]`. */
+.segmented__item[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============================ panes ============================ */
+
+.workspace {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  background: var(--void);
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.pane--editor {
+  width: 50%;
+  background: var(--editor-bg);
+}
+
+.pane--preview {
+  width: 50%;
+  overflow-y: auto;
+  background: var(--preview-bg);
+  border-left: 1px solid var(--line);
+}
+
+#editor {
+  height: 100%;
+}
+
+.preview-body {
+  padding: var(--sp-5) var(--sp-6) var(--sp-6);
+}
+
+/* view modes: the divider only exists in split */
+body[data-view='editor'] .pane--preview,
+body[data-view='preview'] .pane--editor,
+body[data-view='editor'] .beam,
+body[data-view='preview'] .beam {
+  display: none;
+}
+
+body[data-view='editor'] .pane--editor,
+body[data-view='preview'] .pane--preview {
+  width: 100% !important;
+}
+
+/* ============================ the beam ============================ */
+
+/*
+ * The signature element. A hairline of light between source and preview: the divider
+ * is the product's namesake, not a grey bar.
+ */
+.beam {
+  position: relative;
+  flex: none;
+  width: var(--divider-hit);
+  margin: 0 calc(var(--divider-hit) / -2 + 1px);
+  cursor: col-resize;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  z-index: var(--z-divider);
+  touch-action: none;
+}
+
+.beam::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--beam-soft) 12%,
+    var(--beam) 50%,
+    var(--beam-soft) 88%,
+    transparent 100%
+  );
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.beam:hover::before,
+.beam:focus-visible::before {
+  opacity: 1;
+  box-shadow: 0 0 10px 1px var(--beam-glow);
+}
+
+.beam[data-dragging='true']::before {
+  opacity: 1;
+  box-shadow: 0 0 16px 2px var(--beam-glow);
+}
+
+.beam:focus-visible {
+  outline: none;
+}
+
+/* fires when the preview re-renders — the beam carrying content across */
+@keyframes beam-pulse {
+  0% {
+    opacity: 0.55;
+  }
+  35% {
+    opacity: 1;
+    box-shadow: 0 0 14px 2px var(--beam-glow);
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+.beam[data-pulse='true']::before {
+  animation: beam-pulse var(--dur-slow) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beam[data-pulse='true']::before {
+    animation: none;
+  }
+}
+
+/* ============================ status bar ============================ */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4);
+  background: var(--surface-1);
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.statusbar__spacer {
+  flex: 1 1 auto;
+}
+
+.statusbar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--beam);
+  transition: background var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+.save-dot[data-state='saving'] {
+  background: var(--text-3);
+  opacity: 0.6;
+}
+
+.source-link {
+  gap: var(--sp-1);
+  color: var(--text-3);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.source-link:hover {
+  color: var(--text-1);
+}
+
+/* ============================ toasts ============================ */
+
+.toasts {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--statusbar-h) + var(--sp-4));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  z-index: var(--z-toast);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--beam);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-2);
+  animation: toast-in var(--dur) var(--ease);
+}
+
+.toast[data-tone='error'] {
+  border-left-color: var(--danger);
+}
+
+.toast[data-leaving='true'] {
+  animation: toast-out var(--dur) var(--ease) forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ============================ command palette ============================ */
+
+.sheet {
+  width: min(520px, calc(100vw - var(--sp-5)));
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  color: var(--text-1);
+  box-shadow: var(--shadow-2);
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.sheet__input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+}
+
+.sheet__input:focus {
+  outline: none;
+}
+
+.sheet__list {
+  max-height: 320px;
+  margin: 0;
+  padding: var(--sp-2);
+  list-style: none;
+  overflow-y: auto;
+}
+
+.sheet__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet__item[aria-selected='true'] {
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+
+.sheet__item svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-3);
+}
+
+.sheet__keys {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.sheet__empty {
+  padding: var(--sp-4);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* ============================ responsive ============================ */
+
+/* The pane tabs replace the divider on narrow screens, where dragging a 1px
+   hairline is not a real interaction. */
+.pane-tabs {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  body {
+    grid-template-rows: var(--toolbar-h) auto 1fr var(--statusbar-h);
+  }
+
+  .toolbar {
+    gap: var(--sp-2);
+    padding: 0 var(--sp-2);
+  }
+
+  .toolbar .segmented,
+  .toolbar__label {
+    display: none;
+  }
+
+  .doc-title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .pane-tabs {
+    display: flex;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .pane-tabs__item {
+    flex: 1;
+    height: 36px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    cursor: pointer;
+  }
+
+  .pane-tabs__item[aria-pressed='true'] {
+    border-bottom-color: var(--beam);
+    color: var(--beam);
+  }
+
+  /* only ever one pane at a time below this width */
+  .beam {
+    display: none;
+  }
+
+  .pane--editor,
+  .pane--preview {
+    width: 100% !important;
+  }
+
+  body[data-view='split'] .pane--preview,
+  body[data-view='editor'] .pane--preview {
+    display: none;
+  }
+
+  body[data-view='preview'] .pane--editor {
+    display: none;
+  }
+
+  body[data-view='preview'] .pane--preview {
+    display: block;
+  }
+
+  .preview-body {
+    padding: var(--sp-4);
+  }
+
+  /* Not enough room for all five readouts — drop the two least useful on a phone
+     rather than let the row clip mid-word. */
+  .statusbar {
+    gap: var(--sp-3);
+    padding: 0 var(--sp-3);
+  }
+
+  #status-chars,
+  #status-cursor,
+  #source-link {
+    display: none;
+  }
+}
