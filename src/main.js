@@ -20,6 +20,13 @@ import { downloadText } from './export/download.js';
 import { copyPreviewAsHtml } from './export/html.js';
 import { getPreference, cyclePreference, initTheme, onThemeChange } from './theme.js';
 import {
+  buildShareUrl,
+  clearSharedFragment,
+  decodeDocument,
+  readSharedPayload,
+  LONG_LINK
+} from './share.js';
+import {
   migrateLegacyStorage,
   migrateSingleDocument,
   loadContent,
@@ -402,6 +409,26 @@ const init = () => {
    * cost a 4.65 MB dependency and hand-mapping the markdown AST, losing Mermaid and KaTeX
    * on the way. The label says `.doc` so the name never overstates what the file is.
    */
+  /*
+   * A share link carries the whole document in the fragment, so it works from any host and
+   * never reaches a server. Long documents make long links — browsers cope, but chat and
+   * mail clients start mangling well before that, so say so rather than hand over a link
+   * that will arrive broken.
+   */
+  let copyShareLink = async () => {
+    try {
+      const url = await buildShareUrl({ title: docTitle, text: editor.getValue() });
+      await navigator.clipboard.writeText(url);
+      toast(
+        url.length > LONG_LINK
+          ? `Share link copied — ${url.length} characters, which some chat apps will truncate`
+          : 'Share link copied to clipboard'
+      );
+    } catch (error) {
+      toastError('Could not create a share link');
+    }
+  };
+
   let exportMarkdown = () => {
     downloadText(filenameFromTitle(docTitle, 'md'), editor.getValue(), 'text/markdown;charset=utf-8');
     toast('Markdown downloaded');
@@ -595,6 +622,7 @@ const init = () => {
     { title: 'Preview only', keys: 'mod+3', run: () => setViewMode('preview') },
     { title: 'Copy Markdown source', run: copySource },
     { title: 'Copy rendered HTML', run: copyHtml },
+    { title: 'Copy share link', run: copyShareLink },
     { title: 'Toggle sync scroll', run: toggleScrollSync },
     markdownModeCommand,
     { title: 'Reset to welcome document', run: resetDocument },
@@ -649,6 +677,47 @@ const init = () => {
     createDocument({ silent: true });
     setValue(DEFAULT_DOCUMENT);
   }
+
+  /*
+   * A shared link imports rather than replaces. People keep several documents now, so a
+   * link that overwrote the open one would be a data-loss path — and the fragment is
+   * cleared afterwards, or every reload would import the same document again.
+   *
+   * `init` is not async, so this hangs off a promise the same way the emoji chunk does.
+   * The imported text still goes through `renderMarkdown`, and therefore DOMPurify, exactly
+   * like anything typed by hand.
+   */
+  let importSharedDocument = (payload) =>
+    decodeDocument(payload).then((shared) => {
+      clearSharedFragment();
+
+      if (!shared) {
+        toastError('That share link could not be read');
+        return;
+      }
+
+      createDocument({ silent: true });
+      setDocTitle(shared.title);
+      setValue(shared.text);
+      toast(`Imported "${docTitle}" from a share link`);
+    });
+
+  const sharedPayload = readSharedPayload();
+  if (sharedPayload) {
+    importSharedDocument(sharedPayload);
+  }
+
+  /*
+   * Pasting a link into a tab that already has Markbeam open changes only the fragment,
+   * which is a same-document navigation: no reload, no second `init`. Without this the
+   * link would appear to do nothing at all, which is exactly how the first version behaved.
+   */
+  window.addEventListener('hashchange', () => {
+    const payload = readSharedPayload();
+    if (payload) {
+      importSharedDocument(payload);
+    }
+  });
 
   ensureMath(editor.getValue());
   updateCounts(editor.getValue());

@@ -24,12 +24,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Product
 
-### [ ] T11 · Shareable URL links
-
-**Done when:** a link round-trips a document without a server.
-
----
-
 ### [ ] T12 · Print stylesheet
 
 **Done when:** Ctrl+P produces a clean document — no toolbar, editor or status bar.
@@ -65,6 +59,113 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T11 · Shareable URL links — 2026-08-28
+
+**Why:** there was no way to hand someone a document. Everything lived in `localStorage`,
+and the app had no URL handling at all — `grep` for `location.` across `src/` returned
+nothing.
+
+**Fix:** `src/share.js`. The document is packed as `{ v, title, content }`, deflated and
+base64url-encoded into the URL **fragment**; `Copy share link` in the palette produces it,
+and opening a link imports it.
+
+**Two decisions worth keeping:**
+
+- **Fragment, never query.** A fragment is not transmitted, so "without a server" is true of
+  any host rather than merely of ours, and document text never reaches an access log. The
+  test asserts this structurally — empty query, payload in the hash — because a
+  query-string version would work perfectly while quietly leaking every document.
+- **Import, never replace.** T9 means people keep several documents, so a link that
+  overwrote the open one would be a data-loss path. The fragment is cleared after import,
+  or every reload would add the same document again.
+
+**No dependency added.** `fflate` and `pako` are both in `node_modules`, but only
+transitively, and T7 established that this project does not build on a transitive
+dependency. Native `CompressionStream('deflate-raw')` costs nothing. A one-character codec
+flag (`z` / `p`) leads the payload, so a browser without it degrades to a longer link rather
+than a broken feature.
+
+### The test found a real product gap, not just its own bug
+
+The first recipient check navigated from `/` to `/#doc=…` and reported the feature broken.
+That is a **same-document navigation** — only the fragment changes, so there is no reload
+and no second `init`. What the test had actually found is that **pasting a share link into
+an already-open Markbeam tab silently did nothing**, which is an entirely normal way to use
+a link.
+
+Fixed with a `hashchange` listener. The suite now covers the two paths separately: a genuine
+cold load, and a link pasted into an open tab.
+
+**Measured**, six checks either side of the change:
+
+```
+BASELINE  ✗ palette offers Copy share link    no such command
+          ✗ payload rides in the fragment     not a URL: null
+          ✗ opening the link reproduces text  no link to open
+          ✗ …and the title                    no link to open
+          ✗ importing adds a document         no link to open
+          ✗ fragment cleared, no duplicate    no link to open
+FIXED     ✓ hash 204 chars, search "", path "/"
+          ✓ "# Shared note … ünïcödé … 🎉"
+          ✓ title "Shared note"
+          ✓ 2 documents: ["Shared note","Untitled"]
+          ✓ hash "", 2 -> 2 documents after reload
+          ✓ pasted into an open tab: 1 -> 2 documents
+```
+
+The round trip is tested the way a recipient experiences it: `localStorage` is wiped first,
+so nothing can pass by reading state the sender left behind.
+
+**Link sizes, measured — with a caveat that matters:**
+
+```
+source     87 B  ->   162-char URL   codec z
+source  5,755 B  ->   408-char URL   codec z
+source 46,455 B  -> 1,976-char URL   codec z
+```
+
+Every size round-tripped exactly. **The fixture is repetitive Lorem, so real prose will not
+compress anywhere near 23:1.** What these numbers prove is that the deflate path is live
+rather than silently falling back to plain base64 — not that any document shrinks that far.
+A link over ~8000 characters still copies, with the toast reporting its length, because chat
+and mail clients mangle long URLs long before browsers do.
+
+**One check is green on both sides, deliberately:** `a hostile link renders inert` —
+`executed=false, scripts=0, onerror=0` for a link carrying `<script>` and `onerror` markup.
+There was no importer before, so it demonstrates no bug. It guards a feature that renders
+content straight from a URL, which is exactly where a sanitiser regression would matter;
+imported text goes through `renderMarkdown` and therefore DOMPurify like anything typed.
+
+**Verify vs reference:** the reference has no sharing of any kind. Measured — after typing
+into it, the URL is still bare:
+
+```
+controls      ["Markdown Live Preview", "Reset", "Copy", "Export PDF"]
+hash length   0
+query length  0
+url           https://markdownlivepreview.com/
+```
+
+On https://markdownlivepreview.com, type a document and look at the address bar: it never
+changes, and there is no control that produces a link. The only way to give someone the text
+is **Copy**, which hands over the Markdown source for them to paste somewhere themselves.
+
+On http://localhost:5173, press `Ctrl+K` → **Copy share link**, then open that link in a
+private window (or another browser). The document appears with its title, as a **new**
+document alongside anything already there — and the address bar cleans itself, so reloading
+does not add it twice. Paste the same link into a tab that already has Markbeam open and it
+imports there too.
+
+To measure rather than eyeball, run this in the console on each site after producing a link:
+
+```js
+`hash ${location.hash.length}, query ${location.search.length}`
+```
+
+The reference reports `hash 0, query 0`. Ours reports a few hundred characters of hash and
+`query 0` — the document is in the fragment, which is never sent to the server.
+
 
 ### [x] T10 · Export HTML / Word / `.md` — 2026-08-28 (#99, #57)
 
