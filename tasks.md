@@ -44,6 +44,33 @@ as requested without changing that foundation.
 **Upstream contribution.** The project is developed independently; there is no upstream
 to contribute back to.
 
+**The duplicate `html2canvas` in the build.** `dist/` contains both
+`html2canvas-pro.esm` (248 KB) and `html2canvas.esm` (200 KB), which looks alarming given how
+emphatically `CLAUDE.md` says the `-pro` fork is the dependency and the original must not come
+back. It is not a regression and there is nothing to fix.
+
+`html2canvas@1.4.1` is an **optionalDependency of jspdf**, and jspdf reaches it through a
+*dynamic* import inside its `.html()` method:
+
+```js
+i.html2canvas ? Promise.resolve(i.html2canvas) : import("html2canvas")
+```
+
+Markbeam never calls `.html()` — `src/export/pdf.js` imports `html2canvas-pro` directly and
+hands jsPDF finished canvases. So Rollup emits the chunk, and **no browser ever fetches it**:
+the cost is deploy size only, with zero bandwidth and zero first-paint cost. Removing it would
+mean fighting an optional transitive dependency for no user-visible gain.
+
+Re-check both halves of that claim with:
+
+```
+node -e "console.log(Object.keys(require('jspdf/package.json').optionalDependencies))"
+grep -c 'import("html2canvas")' node_modules/jspdf/dist/jspdf.es.min.js
+```
+
+If jspdf ever makes it a hard dependency, or the app starts using `.html()`, this stops being
+free and the entry should be revisited.
+
 ---
 
 ## Completed
@@ -417,7 +444,8 @@ above.
 **Note for later.** The build ships both `html2canvas-pro` (248 KB) and `html2canvas`
 (200 KB); `CLAUDE.md` is emphatic that the `-pro` fork is the dependency and the original
 must not return. jspdf appears to pull it in optionally. Both are lazy export-path chunks so
-nothing on first paint pays for it, but 200 KB of it is probably dead. Worth its own task.
+nothing on first paint pays for it. Traced afterwards and it costs nothing at all — see
+**Out of scope** below rather than opening a task for it.
 
 ---
 
