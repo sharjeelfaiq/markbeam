@@ -153,7 +153,10 @@ let diagramElements = () =>
  */
 let prerenderLightDiagrams = async () => {
   if (mermaidTheme(getTheme()) !== 'dark') {
-    return; // already light on screen; nothing to prepare
+    // Already light on screen: nothing to prepare, but say so. Returning silently left the
+    // readiness attribute unwritten, and anything waiting on it waited forever.
+    markReadiness();
+    return;
   }
 
   const pending = diagramElements()
@@ -161,6 +164,7 @@ let prerenderLightDiagrams = async () => {
     .filter((source) => source && !lightBySource.has(source));
 
   if (pending.length === 0) {
+    markReadiness();
     return;
   }
 
@@ -247,8 +251,13 @@ let markReadiness = () => {
   if (!output) {
     return;
   }
-  const ready = diagramElements().every((element) =>
-    lightBySource.has(element.dataset.mermaidSource)
-  );
+  /*
+   * Ready means "printing will not be improved by waiting", which a light screen satisfies
+   * without a single cached copy — the diagrams on screen are already the ones to print.
+   * Requiring a cache entry regardless of theme left the light path permanently pending.
+   */
+  const ready =
+    mermaidTheme(getTheme()) !== 'dark' ||
+    diagramElements().every((element) => lightBySource.has(element.dataset.mermaidSource));
   output.dataset.printDiagrams = ready ? 'ready' : 'pending';
 };

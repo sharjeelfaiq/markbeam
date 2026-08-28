@@ -12,7 +12,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T1, T2, T3, T4, T18, T19, T20 and T21 are all done. New bugs go here, above P1.*
+*Empty — T1, T2, T3, T4, T18, T19, T20, T21 and T24 are all done. New bugs go here, above P1.*
 
 ---
 
@@ -53,6 +53,75 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T24 · Print readiness never settles when the host prefers a light theme — 2026-08-28
+
+CI went red on `9d3a641` (T12): `▸ print — suite threw: Waiting failed: 25000ms exceeded`.
+The same commit was 16/16 green locally.
+
+**Root cause.** `prerenderLightDiagrams()` in `src/mermaid/index.js` returns early when the
+screen is already light — there is nothing to prepare — and that path never reached
+`markReadiness()`, so `#output[data-print-diagrams]` was never written. `markReadiness()`
+itself also demanded a cached light copy for every diagram regardless of theme, so even
+when it did run on a light screen it could only ever report `pending`.
+
+The default theme preference is `system`. My workstation's OS is dark; the CI host reports
+light. Measured on one build, two colour schemes:
+
+```
+light:  theme light, printDiagrams (unset), diagrams 1
+dark:   theme dark,  printDiagrams ready,   diagrams 1
+```
+
+Printing was never broken on that path — the light screen prints correctly with no cache at
+all. The only symptom was a wait that never resolved, which is why nothing but the test saw
+it.
+
+**Second defect, in the test.** `tests/print.test.mjs` asserted `themeBeforePrinting === 'dark'`
+while doing nothing to make the app dark. On a light host it would have measured a light app
+for every check above it. It now pins `markbeam:theme_settings` before the reload, so the
+dark-to-light print path is what gets measured on any machine.
+
+**Done when**
+
+- [x] The prerender writes readiness on every exit path, not only through the `finally`.
+- [x] `markReadiness()` treats a light screen as ready — nothing to wait for.
+- [x] The suite pins the theme rather than inheriting the host's.
+- [x] A check covers the light path, and fails against the unfixed code
+      (`(never written)` → `ready`).
+- [x] Full suite green and CI green on a host that prefers light.
+
+**Verify vs reference**
+
+This one has **no user-visible difference**, and inventing one would be dishonest. Printing
+was already correct on the light path; what was broken was the signal saying so. The
+difference is observable, but only in the console.
+
+*On ours* — http://localhost:5173, theme set to **light**, with a document containing
+a Mermaid diagram. Once that diagram has rendered:
+
+```js
+document.querySelector('#output').dataset.printDiagrams
+```
+
+reads `"ready"`. Before this fix it read `undefined`, permanently, because the prerender
+returned before writing it. Switch to **dark**, wait ~1s, and it reads `"ready"` there too —
+that path always worked.
+
+To reproduce the original CI failure: devtools → **Rendering** → *Emulate CSS
+`prefers-color-scheme`* → **light**, with the theme preference on **System**, then reload.
+The app resolves to light, and on the unfixed build the attribute is never written.
+
+*On the reference* — https://markdownlivepreview.com has no print stylesheet at all
+(`@media print` rules: 0) and no Mermaid print path, so there is nothing to compare
+against. The relevant comparison is T12's, which stands unchanged.
+
+**Precondition worth knowing:** the light copies are prepared on idle 400ms after a render
+settles, and every render pass cancels an in-flight prerender. On a document with several
+diagrams, reading the attribute immediately after load can legitimately catch `"pending"`.
+That is the cache warming, not the bug.
+
+---
 
 ### [x] T12 · Print stylesheet — 2026-08-28
 
@@ -175,7 +244,6 @@ To measure rather than eyeball, run this in the console on each site:
 
 The reference reports `0`. Ours reports its print blocks.
 
-
 ### [x] T11 · Shareable URL links — 2026-08-28
 
 **Why:** there was no way to hand someone a document. Everything lived in `localStorage`,
@@ -281,7 +349,6 @@ To measure rather than eyeball, run this in the console on each site after produ
 
 The reference reports `hash 0, query 0`. Ours reports a few hundred characters of hash and
 `query 0` — the document is in the fragment, which is never sent to the server.
-
 
 ### [x] T10 · Export HTML / Word / `.md` — 2026-08-28 (#99, #57)
 

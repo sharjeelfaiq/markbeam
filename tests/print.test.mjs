@@ -62,6 +62,17 @@ export const suite = {
       const checks = [];
 
       await seedDocument(page, LONG_DOCUMENT, 'Print fixture');
+      /*
+       * Pin the theme instead of inheriting the host's. Everything below measures the
+       * dark-to-light print path, and the default preference is 'system' — so on a machine
+       * whose OS asks for light, this suite silently measured a light app and asserted the
+       * opposite. Not hypothetical: it passed on a dark workstation and timed out on CI,
+       * where the headless host reports a light preference.
+       */
+      await page.evaluate(() => {
+        localStorage.setItem('markbeam:theme_settings', JSON.stringify({ v: 'dark' }));
+        localStorage.setItem('markbeam:theme', 'dark');
+      });
       await page.reload({ waitUntil: 'networkidle2' });
       await boot(page);
       await page.waitForFunction(() => !!document.querySelector('#output .mermaid svg'), {
@@ -261,6 +272,40 @@ export const suite = {
         name: 'the screen theme is restored after printing',
         pass: themeAfterPrinting === themeBeforePrinting,
         detail: `${themeBeforePrinting} -> ${themeAfterPrinting}`
+      });
+
+      /*
+       * The light path has to settle too. With the screen already light there is nothing to
+       * prepare, and the prerender returned early without ever writing the readiness
+       * attribute — so anything waiting on it waited forever. Printing itself still worked,
+       * which is what let it survive: the only symptom was a wait that never resolved.
+       */
+      await page.evaluate(() => {
+        localStorage.setItem('markbeam:theme_settings', JSON.stringify({ v: 'light' }));
+        localStorage.setItem('markbeam:theme', 'light');
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      await boot(page);
+      await page.waitForFunction(() => !!document.querySelector('#output .mermaid svg'), {
+        timeout: 30000
+      });
+
+      let lightReadiness;
+      try {
+        await page.waitForFunction(
+          () => document.querySelector('#output')?.dataset.printDiagrams === 'ready',
+          { timeout: 8000 }
+        );
+        lightReadiness = 'ready';
+      } catch (error) {
+        lightReadiness = await page.evaluate(
+          () => document.querySelector('#output')?.dataset.printDiagrams ?? '(never written)'
+        );
+      }
+      checks.push({
+        name: 'print readiness settles in the light theme, where there is nothing to prepare',
+        pass: lightReadiness === 'ready',
+        detail: `app theme light, #output[data-print-diagrams] = ${lightReadiness}`
       });
 
       checks.push({
