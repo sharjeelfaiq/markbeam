@@ -1,0 +1,8 @@
+# Markbeam is a public tool with nothing to hide from crawlers, so everything is allowed.
+# The only reason this file exists is the Sitemap line: without it a crawler has to discover
+# pages by following links, and this site has exactly two.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://markbeam.vercel.app/sitemap.xml

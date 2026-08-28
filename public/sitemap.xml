@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two pages, listed by hand. A generator would be more machinery than a two-entry file
+  deserves, and it would have to run at build time — which this project deliberately does
+  without, having no vite.config.
+
+  `/about` rather than `/about.html`: `cleanUrls` in vercel.json makes that the canonical
+  form and redirects the .html spelling to it, so listing the redirect source would send
+  crawlers through a hop for no reason.
+
+  `lastmod` is the date the content last changed, not the date of the last deploy. Bumping it
+  on every deploy trains crawlers to ignore it.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://markbeam.vercel.app/</loc>
+    <lastmod>2026-08-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://markbeam.vercel.app/about</loc>
+    <lastmod>2026-08-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+</urlset>
