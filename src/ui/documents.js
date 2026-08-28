@@ -10,6 +10,8 @@
  * knows how a document is loaded or saved.
  */
 
+import { formatStamp } from './stamp.js';
+
 let dialog;
 let list;
 let actions;
@@ -17,28 +19,6 @@ let actions;
 let getDocuments = () => [];
 let getActiveId = () => null;
 let handlers = {};
-
-let formatStamp = (value) => {
-  if (!value) {
-    return '';
-  }
-
-  const elapsed = Date.now() - value;
-  const minute = 60000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (elapsed < minute) {
-    return 'just now';
-  }
-  if (elapsed < hour) {
-    return `${Math.floor(elapsed / minute)}m ago`;
-  }
-  if (elapsed < day) {
-    return `${Math.floor(elapsed / hour)}h ago`;
-  }
-  return `${Math.floor(elapsed / day)}d ago`;
-};
 
 let renderList = () => {
   if (!list) {

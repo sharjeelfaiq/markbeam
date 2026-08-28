@@ -220,5 +220,11 @@
       <ul class="sheet__list" id="docs-list" aria-label="Open a document"></ul>
       <ul class="sheet__list sheet__list--actions" id="docs-actions" aria-label="Document actions"></ul>
     </dialog>
+
+    <!-- Autosave history. Its own sheet rather than a third list in #docs: that one is
+         about which document is open, this is about which version of it. Same classes. -->
+    <dialog class="sheet" id="history" aria-label="Document history">
+      <ul class="sheet__list" id="history-list" aria-label="Restore an earlier version"></ul>
+    </dialog>
   </body>
 </html>

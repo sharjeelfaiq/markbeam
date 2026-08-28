@@ -28,8 +28,9 @@ import { suite as gfmSuite } from './gfm.test.mjs';
 import { suite as exportSuite } from './export.test.mjs';
 import { suite as shareSuite } from './share.test.mjs';
 import { suite as printSuite } from './print.test.mjs';
+import { suite as historySuite } from './history.test.mjs';
 
-const ALL_SUITES = [storageSuite, documentsSuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
+const ALL_SUITES = [storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
 
 // `npm test -- mermaid` runs just that suite; substring match on the suite name.
 const filters = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));

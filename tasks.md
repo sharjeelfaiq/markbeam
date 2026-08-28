@@ -25,14 +25,7 @@ above P1.*
 
 ## P2 — Product
 
-### [ ] T22 · Autosave history
-
-**Why:** deferred out of T9 rather than smuggled into it. T9's Approach named it, but its
-Done-when did not require it, and it is a separate feature: a snapshot cadence, a
-localStorage quota strategy and a restore UI.
-
-**Done when:** a document can be rolled back to an earlier autosaved state, and history
-cannot grow until it exhausts the origin's storage quota.
+*Empty — T22 was the last one. New product work goes here.*
 
 ---
 
@@ -54,6 +47,94 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T22 · Autosave history — 2026-08-28
+
+**Why:** deferred out of T9. Every keystroke overwrote `markbeam:doc:<id>`, so the previous
+text was gone — no undo survived a reload, and *Clear document* / *Reset to welcome* were one
+confirm away from destroying work permanently.
+
+**Shape.** Snapshots on a 20s pause in editing plus on leaving; 20 per document, thinned by
+age, under a 512 KB budget; restore from its own History sheet in the palette.
+
+- `src/history.js` — cadence, thinning, budget, quota fallback. No DOM.
+- `src/ui/history.js` — the sheet, mirroring `src/ui/documents.js`.
+- `src/ui/stamp.js` — `formatStamp` extracted from the documents sheet and shared, now
+  switching to an absolute date past a day. `7d ago` is not a moment anyone remembers, and
+  history is the one list that reaches back that far.
+- `src/storage.js` — `loadHistory` / `saveHistory` / `deleteHistory` / `historyDocIds` /
+  `historyBytes`. `saveHistory` returns a boolean instead of warning and carrying on, because
+  the caller has a recovery path.
+
+**One key per document, holding the whole list** — the opposite of the content keys, and
+deliberately. Content is rewritten every keystroke, where a blob would re-serialise every
+document each time. Snapshots happen at most every 20s, so one small array costs nothing and
+keeps a document's history atomic with itself.
+
+**The failure mode worth knowing about.** `openDocument()` calls `setValue()`, which fires
+Monaco's change event, which schedules a snapshot. A timer started under document A therefore
+fires after a switch and would write A's text into B's history — silent corruption, nothing
+on screen to show it. Guarded twice: the closure re-checks `activeDocId` when the timer
+fires, and `flushActive()` cancels the pending timer before the switch. Either alone would
+do; both, because the failure is invisible.
+
+**Retention, measured.** 30 seeded entries a minute apart trim to **11**, not 20 — thinning
+collapsing the older ones rather than truncating the list. Seeded across a week, entries
+**192h back** survive. Twenty 84 KB snapshots sweep down to **494 KB**, inside the 512 KB
+budget.
+
+**Cost.** The full storage round trip — serialise, write, read back, parse — on a document at
+the cap:
+
+| Document | Stored payload | Median |
+|---|---|---|
+| 2 KB | 6 KB | 0 ms |
+| 50 KB | 150 KB | 0.5 ms |
+| 200 KB | 600 KB | 2.8 ms |
+
+End to end, the snapshot lands **14 ms** after the idle window on a 2 KB document. On a
+200 KB document the same measurement read **−33 ms**, which is measurement noise rather than
+a negative cost — the write is below the resolution of that method, hence the table above.
+
+**The test lied first.** The baseline run against the unfixed code came back 8 red, 4 green —
+and three of those greens were vacuous, passing *because* the feature was absent:
+
+| Check | Why it passed for the wrong reason |
+|---|---|
+| preview follows the restore | the editor already held that text; no restore had happened |
+| pending snapshot never crosses documents | nothing has a history, so nothing can leak |
+| thinning reaches back a day | the seeded array was read straight back, untrimmed |
+
+All three were hardened before a line of the feature was written: the preview check is gated
+on a restore having occurred, the cross-document check also requires the snapshot to be
+present in *its own* document, and the thinning check requires the newest entry to be the text
+just typed. Final: **13/13**.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com: type, wait, type again, reload. The
+earlier text is gone. There is no history, no snapshot, and no way back; its only recovery is
+the editor's in-memory undo, which a reload discards.
+
+*On ours* — http://localhost:5173:
+
+1. Type something, then **stop for 20 seconds**. This is the precondition that matters:
+   snapshots are debounced to a pause, so typing continuously never triggers one.
+2. Type something different, stop again.
+3. Palette (Ctrl+K) → **Document history**. Rows read `Current · N words / now` and
+   `N words / 4m ago`.
+4. Click an earlier row. Editor and preview both change, a toast names the version restored,
+   and the text you had a moment ago is now the top snapshot — restore is itself undoable.
+
+Console one-liner for what is stored:
+
+```js
+Object.keys(localStorage).filter((k) => k.startsWith('markbeam:history:'))
+```
+
+Deleting a document removes its history key with it.
+
+---
 
 ### [x] T25 · The print suite reads the theme before the page has left print media — 2026-08-28
 

@@ -54,6 +54,15 @@ import {
 } from './storage.js';
 import { initPalette, toggle as togglePalette } from './ui/palette.js';
 import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
+import { initHistory, open as openHistorySheet } from './ui/history.js';
+import { formatStamp } from './ui/stamp.js';
+import {
+  flushSnapshot,
+  forgetHistory,
+  historyFor,
+  scheduleSnapshot,
+  snapshot
+} from './history.js';
 import { getViewMode, initViewMode, onViewModeChange, setViewMode } from './ui/viewmode.js';
 import { initDivider } from './ui/divider.js';
 import { initStatusBar, markSaving, updateCounts, updateCursor } from './ui/statusbar.js';
@@ -178,6 +187,21 @@ const init = () => {
       touchActive();
       persistDocuments();
     }
+    /*
+     * Autosave history rides on the same event but on a much longer fuse — a pause in
+     * editing, not a keystroke. The closure re-checks `activeDocId` when the timer fires:
+     * `openDocument()` calls `setValue()`, which fires this very event, so a timer started
+     * under one document could otherwise write its text into whichever document is open
+     * twenty seconds later. That failure is silent, which is what makes it worth guarding
+     * twice — here, and by cancelling in `flushActive()`.
+     */
+    if (activeDocId) {
+      const scheduledFor = activeDocId;
+      scheduleSnapshot(scheduledFor, () =>
+        activeDocId === scheduledFor ? editor.getValue() : null
+      );
+    }
+
     // Kept in step so a downgrade still opens the document the user was last editing.
     saveContent(value);
 
@@ -300,6 +324,10 @@ const init = () => {
     saveDoc(activeDocId, editor.getValue());
     touchActive();
     persistDocuments();
+
+    // Leaving is the last chance to record this document, and the pending timer must not
+    // survive into the next one.
+    flushSnapshot(activeDocId, editor.getValue());
   };
 
   let openDocument = (id) => {
@@ -369,6 +397,7 @@ const init = () => {
     }
 
     deleteDoc(activeDocId);
+    forgetHistory(activeDocId);
     documents = documents.filter((doc) => doc.id !== activeDocId);
     persistDocuments();
 
@@ -387,6 +416,48 @@ const init = () => {
     openDocument(documents[0].id);
     toast('Document deleted');
   };
+
+  /*
+   * Restore takes a snapshot of the present *first*. Without that, restoring the wrong
+   * entry destroys the version the user was actually working on, and the feature meant to
+   * protect against a misclick becomes a way to lose work to one.
+   */
+  let restoreSnapshot = (entry) => {
+    if (!entry || typeof entry.text !== 'string') {
+      return;
+    }
+
+    snapshot(activeDocId, editor.getValue());
+    setValue(entry.text);
+
+    if (activeDocId) {
+      saveDoc(activeDocId, entry.text);
+      touchActive();
+      persistDocuments();
+    }
+
+    toast(`Restored the version from ${formatStamp(entry.at)}`);
+  };
+
+  let openHistory = () => openHistorySheet();
+
+  /*
+   * A closing tab is the case history exists for and the one the idle timer cannot cover.
+   * `pagehide` and a hidden `visibilitychange`, not `beforeunload`: that event is unreliable
+   * on mobile Safari, which is exactly where a tab disappears without warning.
+   */
+  let snapshotOnLeave = () => {
+    if (activeDocId) {
+      flushSnapshot(activeDocId, editor.getValue());
+    }
+  };
+
+  window.addEventListener('pagehide', snapshotOnLeave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      snapshotOnLeave();
+    }
+  });
 
   // ---------- actions ----------
 
@@ -507,6 +578,8 @@ const init = () => {
     if (editor.getValue().trim() && !window.confirm(CONFIRM_RESET)) {
       return;
     }
+    // Snapshot before destroying, not after — this is the moment history exists for.
+    snapshot(activeDocId, editor.getValue());
     setValue(DEFAULT_DOCUMENT);
     toast('Reset to the welcome document');
   };
@@ -515,6 +588,7 @@ const init = () => {
     if (editor.getValue().trim() && !window.confirm(CONFIRM_CLEAR)) {
       return;
     }
+    snapshot(activeDocId, editor.getValue());
     setValue('');
     toast('Document cleared');
   };
@@ -636,6 +710,7 @@ const init = () => {
     { title: 'Copy share link', run: copyShareLink },
     { title: 'Toggle sync scroll', run: toggleScrollSync },
     markdownModeCommand,
+    { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
     { title: 'Clear document', run: clearDocument },
     { title: 'Switch theme', run: () => cyclePreference() }
@@ -663,6 +738,12 @@ const init = () => {
    */
   migrateSingleDocument();
   documents = loadDocIndex() || [];
+
+  initHistory({
+    getEntries: () => historyFor(activeDocId),
+    getCurrentText: () => editor.getValue(),
+    onRestore: restoreSnapshot
+  });
 
   initDocuments({
     getDocuments: () => documents,

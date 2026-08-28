@@ -272,3 +272,65 @@ export const saveThemePreference = (preference, resolved) => {
     // ignore storage errors
   }
 };
+
+/*
+ * Autosave history.
+ *
+ * One key per document holding the whole snapshot list, which is the opposite of the
+ * per-document content keys above — and deliberately so. Content is rewritten on every
+ * keystroke, where a single blob would mean re-serialising every document each time.
+ * Snapshots happen at most once every twenty seconds, so rewriting one small array costs
+ * nothing and keeps a document's history atomic with itself.
+ *
+ * `saveHistory` reports failure instead of warning and moving on, because the caller has a
+ * recovery path: history is expendable, and a full quota means dropping snapshots rather
+ * than letting the document save fail.
+ */
+const HISTORY_PREFIX = `${PREFIX}history:`;
+
+let validEntry = (entry) =>
+  entry && typeof entry.text === 'string' && Number.isFinite(entry.at);
+
+export const loadHistory = (id) => {
+  const value = read(`history:${id}`);
+  return Array.isArray(value) ? value.filter(validEntry) : [];
+};
+
+export const saveHistory = (id, entries) => {
+  try {
+    localStorage.setItem(HISTORY_PREFIX + id, JSON.stringify({ v: entries }));
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+export const deleteHistory = (id) => {
+  try {
+    localStorage.removeItem(HISTORY_PREFIX + id);
+  } catch (error) {
+    // storage unavailable; nothing to remove
+  }
+};
+
+/** Document ids that currently hold history, including ones whose document is long gone. */
+export const historyDocIds = () => {
+  try {
+    return Object.keys(localStorage)
+      .filter((key) => key.startsWith(HISTORY_PREFIX))
+      .map((key) => key.slice(HISTORY_PREFIX.length));
+  } catch (error) {
+    return [];
+  }
+};
+
+/** Rough bytes held by history — key plus value, which is what the quota actually counts. */
+export const historyBytes = () => {
+  try {
+    return Object.keys(localStorage)
+      .filter((key) => key.startsWith(HISTORY_PREFIX))
+      .reduce((total, key) => total + key.length + (localStorage.getItem(key) || '').length, 0);
+  } catch (error) {
+    return 0;
+  }
+};
