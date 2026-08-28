@@ -90,6 +90,33 @@ because they run against the dev server where `public/` is served directly.
 **No user-visible change**, and no application code touched: the diff is one workflow file. The
 app was byte-identical to the 18/18 run that preceded it.
 
+**This took two commits, because the first fix was incomplete.** The same exact-title
+assertion existed twice — the build guard at line 42 and the live smoke test at line 172 — and
+only the one CI happened to report first got fixed. `Build and test` then went green and
+`Deploy to Vercel` failed on the identical string. The lesson is dull and worth writing down
+anyway: when a stale assumption breaks a build, grep for every instance of it before declaring
+the fix done, rather than fixing the line in the error message.
+
+The second commit also added a live check for the static files:
+
+```
+for path in robots.txt sitemap.xml og.png about; do curl -o /dev/null -w "%{http_code}" "$PRODUCTION_URL/$path"; done
+```
+
+That is the one place such a check can live. `public/` is served by the real host but bypassed
+by the dev server the browser suites run against, so a missing static file is invisible to
+every local test. Verified live before the assertion was committed, so it could not be shipped
+red:
+
+```
+/            200
+/robots.txt  200
+/sitemap.xml 200
+/og.png      200
+/about       200
+/about.html  308   (cleanUrls redirecting, as intended)
+```
+
 ---
 
 ### [x] T28 · A crawler — and a visitor without JavaScript — saw no content — 2026-08-28

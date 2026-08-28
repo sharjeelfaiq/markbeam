@@ -169,11 +169,21 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q "<title>Markbeam</title>" /tmp/live.html; then
+          if ! grep -qE "<title>[^<]*Markbeam[^<]*</title>" /tmp/live.html; then
             echo "::error::deployed page is not Markbeam"
             head -n 40 /tmp/live.html || true
             exit 1
           fi
+
+          # public/ is only served correctly by the real host, never by the dev server the
+          # suites use — so this is the one place a missing static file can be caught.
+          for path in robots.txt sitemap.xml og.png about; do
+            live=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL/$path" || echo "000")
+            case "$live" in
+              200) echo "  ok   /$path" ;;
+              *)   echo "::error::/$path returned $live on the live site"; exit 1 ;;
+            esac
+          done
 
           # Written as an explicit `if` rather than `grep -q ... && { ... }`: in the healthy
           # case that grep is *expected* to fail, and leaving the step's exit status riding
