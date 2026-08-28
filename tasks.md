@@ -25,33 +25,7 @@ above P1.*
 
 ## P2 — Product
 
-### [ ] T28 · A crawler sees no content, because the page is an app shell
-
-**Why:** the served HTML has no `<h1>` and no body prose. Every visible word arrives after JS
-renders the welcome document into `#output`. Google executes JS, but thin pages rank badly
-regardless.
-
-**The two obvious shortcuts are both wrong.** Hidden or off-screen keyword text is cloaking
-and risks a manual penalty — strictly worse than doing nothing. Bolting a visible marketing
-section into a `height: 100dvh; overflow: hidden` shell breaks the layout, and
-`tests/ui.test.mjs` already checks 375px for overflow.
-
-**Done when:** the initial `#output` content is real HTML in the served markup — a pre-rendered
-form of the actual welcome document that the editor takes over on boot — and the app looks and
-behaves exactly as it does now at 1400px and 375px in both themes. No hidden text. If a
-separate landing page turns out to be the better structure, that case is argued rather than
-assumed.
-
----
-
-### [ ] T29 · No robots.txt and no sitemap
-
-**Why:** neither exists. Nothing tells a crawler what to index or where the sitemap is.
-Smallest of the three, and it depends on T27 for the base URL.
-
-**Done when:** `public/robots.txt` and `public/sitemap.xml` are served from the root of the
-build, the sitemap uses the single base URL from T27, and a check proves both are reachable
-after a build rather than assuming Vite copied them.
+*Empty — T22, T27, T28 and T29 are all done. New product work goes here.*
 
 ---
 
@@ -73,6 +47,111 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T28 · A crawler — and a visitor without JavaScript — saw no content — 2026-08-28
+
+**Why:** the served HTML had no `<h1>` and no body prose. Every visible word arrived after JS
+rendered the welcome document into `#output` (`src/main.js:130` replaces its `innerHTML` on
+boot). Google executes JS, but thin pages rank badly regardless.
+
+**The measurement that reframed the task.** With JavaScript disabled the page rendered
+**0 headings and 109 characters** — all of it button labels (`Edit Split Read Sync Copy PDF`)
+— with an empty editor and an empty preview. Not literally blank, but a dead shell with no
+explanation of what the site is. That is a product bug, and the stronger reason for half of
+this work. Afterwards: **1 heading, 531 characters** of real prose.
+
+**Why the audit's instruction was not followed literally.** It said to put prose on the page.
+Two shortcuts were rejected:
+
+- `body` is `height: 100dvh; overflow: hidden`. A marketing section inside a full-viewport
+  editor breaks the layout, and `tests/ui.test.mjs` asserts no horizontal overflow at 375px.
+- Hiding the text instead is **cloaking**, and a manual penalty is strictly worse than a thin
+  page.
+
+**What shipped**
+
+- A `<noscript>` fallback in `index.html` — an `<h1>`, what the tool does, and a pointer to
+  the landing page. Renders only when scripting is off, so it carries zero layout risk.
+- A `<noscript><style>` block, because **every stylesheet is imported by `src/main.js`** — with
+  scripting off the page has no CSS at all. It also hides the toolbar, pane tabs, panes and
+  status bar, which are non-functional without the editor. Not cloaking: Googlebot runs JS and
+  sees the app, and the fallback says what the app says.
+- `public/about.html` — a real landing page. 2,350 characters, an `<h1>` carrying the keyword,
+  8 subheadings, an FAQ, its own title/description/canonical, and the product screenshot.
+  `public/` is copied verbatim, so this needed **no `vite.config.*`**.
+- An `About` link in the footer beside `Source`.
+- `"cleanUrls": true` in `vercel.json`, so the page is `/about`.
+
+**Caught by looking at the screenshot, not by a check:** two unstyled `Write | Preview`
+buttons survived in the no-JS view, because `.pane-tabs` sits outside `.workspace` and the
+hide list missed it. No assertion would have found that.
+
+**Cost, recorded in `CLAUDE.md`.** `public/about.html` and the `noscript` style block are a
+**second** deliberate duplication of the token ramp, after `src/editor/themes.js`. ~6 values
+each behind a `prefers-color-scheme` query. The alternative was a `vite.config.js` with a
+second Rollup input, reversing the documented no-config decision.
+
+**A vacuous check, caught before it could lie.** The landing-page assertions first passed
+against a page that did not exist: the dev server falls back to `index.html` for unknown
+paths, so `/about.html` answered **200** with `h1="Welcome to Markbeam"` and 861 characters —
+the app. Hardened to require `!document.querySelector('#editor')`, which the app shell always
+has and a static page never does, plus a canonical ending in `/about`.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173. Disable JavaScript (devtools → Settings → Debugger →
+Disable JavaScript) and reload: an explanation and a link, instead of a dead toolbar. Re-enable
+it and the app is unchanged. Then open `/about.html` for the landing page; in production
+`cleanUrls` serves it at `/about`.
+
+*On the reference* — https://markdownlivepreview.com with JavaScript disabled renders its
+chrome and an empty editor, with no explanation and no fallback content, and has no equivalent
+landing page.
+
+**Still true:** the homepage has **0 `<h1>` outside `noscript`**, by design. The app shell is
+the homepage; the prose lives on `/about`.
+
+---
+
+### [x] T29 · No robots.txt and no sitemap — 2026-08-28
+
+**Why:** neither existed, so nothing told a crawler where the sitemap was. The site has two
+pages, which is exactly the case where link-discovery alone is fragile.
+
+**What shipped:** `public/robots.txt` (allow all, `Sitemap:` line) and `public/sitemap.xml`
+(`/` and `/about`, with `lastmod`). Both land at the build root, verified in `dist`.
+
+**Status is not evidence, and this proved it.** The Vite dev server falls back to
+`index.html` for unknown paths, so with both files moved aside the requests still returned
+**HTTP 200 — with HTML**. A check asserting `status === 200` would have passed against a
+missing file. Both checks assert the body is the file it claims to be:
+
+```
+files moved aside:
+  ✗ robots.txt is served and points crawlers at the sitemap  — served index.html — the file does not exist
+  ✗ sitemap.xml parses as a urlset and lists both real pages — served index.html — the file does not exist
+```
+
+**`/about`, not `/about.html`, in the sitemap.** `cleanUrls` redirects the `.html` spelling, and
+listing a redirect source sends crawlers through a needless hop.
+
+**The domain now lives in four files, and the comment says so.** `index.html` (6),
+`public/about.html` (3), `public/robots.txt` (1), `public/sitemap.xml` (2). The block comment in
+`index.html` previously claimed the URL was in one place and nowhere else; that became false the
+moment these files existed, so it now names all four. Static files in `public/` bypass Vite and
+cannot read a value from anywhere.
+
+**Verify vs reference**
+
+*On ours* — fetch `/robots.txt` and `/sitemap.xml`; both are the real files, and the sitemap
+parses as a `urlset` with two `<loc>` entries.
+
+*On the reference* — `curl -s https://markdownlivepreview.com/robots.txt` for the comparison.
+
+**Not a ranking claim.** Nothing here is observable as a ranking change from this repo. The
+site is still on a shared platform subdomain, which remains the ceiling on all of it.
+
+---
 
 ### [x] T27 · Title and metadata matched no search anyone performs — 2026-08-28
 

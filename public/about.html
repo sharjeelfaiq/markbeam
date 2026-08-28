@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>What Markbeam does — online Markdown editor with live preview</title>
+    <meta name="description" content="What Markbeam is, what it supports, and how it differs: live Markdown preview, Mermaid diagrams, LaTeX math, and export to PDF, HTML and Word — all in the browser.">
+    <meta name="color-scheme" content="dark light">
+
+    <!-- Same base URL as the block in index.html. Changing domain means editing there and
+         here, plus robots.txt and sitemap.xml. -->
+    <link rel="canonical" href="https://markbeam.vercel.app/about">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="What Markbeam does — online Markdown editor with live preview">
+    <meta property="og:description" content="Live Markdown preview, Mermaid diagrams, LaTeX math, and export to PDF, HTML and Word — all in the browser, with no account.">
+    <meta property="og:url" content="https://markbeam.vercel.app/about">
+    <meta property="og:image" content="https://markbeam.vercel.app/og.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+
+    <!--
+      This page lives in `public/`, which Vite copies verbatim without processing, so it
+      cannot import `src/styles/tokens.css` and the handful of colours below are a second
+      deliberate duplication of the token ramp — the first being `src/editor/themes.js`,
+      which duplicates it because Monaco takes concrete hex values.
+
+      The trade was: duplicate six values, or add a `vite.config.js` with a second Rollup
+      input and reverse the documented decision that this project has no Vite config. Six
+      values won. If a token changes, change it here too. See CLAUDE.md.
+    -->
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #0d1219;
+        --muted: #47535f;
+        --accent: #0d9488;
+        --rule: #e4e8ee;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0e1015;
+          --fg: #e8edf5;
+          --muted: #a9b4c6;
+          --accent: #4de1d0;
+          --rule: #232833;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.65;
+      }
+
+      .wrap { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+
+      a { color: var(--accent); }
+
+      header nav { margin-bottom: 2.5rem; font-size: 0.95rem; }
+
+      h1 { font-size: clamp(1.6rem, 4vw, 2.25rem); line-height: 1.15; margin: 0 0 1rem; }
+      h2 { font-size: 1.25rem; margin: 2.5rem 0 0.5rem; }
+      h3 { font-size: 1.05rem; margin: 1.75rem 0 0.35rem; }
+
+      .lede { font-size: 1.1rem; color: var(--muted); }
+
+      ul { padding-left: 1.25rem; }
+      li { margin: 0.35rem 0; }
+
+      .cta {
+        display: inline-block;
+        margin: 2rem 0 0;
+        padding: 0.7rem 1.2rem;
+        border: 1px solid var(--accent);
+        border-radius: 0.5rem;
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      footer {
+        margin-top: 3.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      /* The preview image is decorative here; it must never widen the page on a phone. */
+      img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 0.5rem; }
+    </style>
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <nav><a href="/">← Open the editor</a></nav>
+      </header>
+
+      <main>
+        <h1>Markbeam: an online Markdown editor with live preview</h1>
+
+        <p class="lede">
+          Write Markdown on the left and watch it render on the right. No account, no upload,
+          no waiting — your documents are stored in your own browser and the editor works
+          offline once the page has loaded.
+        </p>
+
+        <img src="/og.png" alt="The Markbeam editor with Markdown source on the left and rendered output on the right." width="1200" height="630">
+
+        <h2>What it supports</h2>
+        <ul>
+          <li><strong>GitHub-Flavored Markdown</strong> — tables, task lists, footnotes,
+            strikethrough and bare autolinks, with a CommonMark mode when you need the
+            stricter parser.</li>
+          <li><strong>Mermaid diagrams</strong> — flowcharts, sequence diagrams and the rest,
+            rendered from fenced code blocks as you type.</li>
+          <li><strong>LaTeX math</strong> — inline and display formulas via KaTeX.</li>
+          <li><strong>GitHub-style callouts</strong> — Note, Tip, Important, Warning and
+            Caution blockquotes.</li>
+          <li><strong><code>==highlight==</code> and <code>:emoji:</code> shortcodes.</strong></li>
+        </ul>
+
+        <h2>Getting the document out again</h2>
+        <ul>
+          <li><strong>PDF</strong> — paginated so headings, tables, code blocks and diagrams
+            are not sliced across a page break.</li>
+          <li><strong>Print</strong> — the document, not the application: no toolbar, no
+            editor pane, and always on a light background whatever theme you use.</li>
+          <li><strong>HTML</strong> — a standalone file with its styles inlined, or copied to
+            the clipboard with table borders intact so it survives a paste into an email.</li>
+          <li><strong>Word (<code>.doc</code>)</strong> and the original <strong>Markdown</strong>
+            source.</li>
+          <li><strong>Shareable links</strong> — the document is compressed into the URL
+            fragment, so it never touches a server.</li>
+        </ul>
+
+        <h2>Your documents stay yours</h2>
+        <p>
+          Everything is held in your browser's local storage. There is no account, no
+          analytics tag, no third-party font CDN and no server that sees what you write.
+          Several documents can be kept side by side, and autosave history keeps earlier
+          versions so an accidental deletion is recoverable.
+        </p>
+
+        <h2>Questions people actually ask</h2>
+
+        <h3>Is it free?</h3>
+        <p>Yes, and there is nothing to sign up for.</p>
+
+        <h3>Does it work offline?</h3>
+        <p>
+          Once the page has loaded, yes — editing, preview and export all run locally. The
+          first load needs a connection because the editor is fetched from a CDN.
+        </p>
+
+        <h3>Can I use it on a phone?</h3>
+        <p>
+          Yes. Below roughly 900 pixels the two panes become tabs, so you switch between
+          writing and reading rather than splitting a narrow screen.
+        </p>
+
+        <h3>Where did it come from?</h3>
+        <p>
+          Markbeam began as a fork of an older live-preview tool and has since been rewritten
+          — the editor, the renderer, the export path and every stylesheet. Documents saved
+          under the original site's storage keys are still migrated on load, so anyone
+          arriving from it keeps their work. The
+          <a href="https://github.com/sharjeelfaiq/markbeam">source is on GitHub</a>.
+        </p>
+
+        <a class="cta" href="/">Start writing →</a>
+      </main>
+
+      <footer>
+        <p>
+          <a href="/">Markbeam</a> ·
+          <a href="https://github.com/sharjeelfaiq/markbeam">GitHub</a>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -190,6 +190,184 @@ export const suite = {
         detail: `${themeScript.count} head scripts, theme at ${themeScript.themeIndex}, app at ${themeScript.appIndex}, theme=${themeScript.resolved}`
       });
 
+      // ---------- content a crawler, or a visitor without JavaScript, can read ----------
+
+      /*
+       * With scripting enabled the browser parses <noscript> children as raw text rather
+       * than DOM, so `textContent` hands back the markup string. That is enough to assert
+       * the content is there and substantial, without launching a second browser with
+       * JavaScript disabled.
+       *
+       * Measured before this existed: with JS off the page rendered 0 headings and 109
+       * characters, all of it button labels — a dead shell with no explanation of what the
+       * site is.
+       */
+      const noscript = await page.evaluate(() => {
+        /*
+         * There is more than one <noscript>: the first is the no-JS stylesheet in <head>.
+         * `querySelector('noscript')` returned that one — 478 characters of CSS and no
+         * heading — so the check failed against a fallback that was in fact correct. Pick
+         * the one that carries the content.
+         */
+        const el = [...document.querySelectorAll('noscript')].find((node) =>
+          /<h1[s>]/i.test(node.textContent)
+        );
+        return el ? el.textContent : null;
+      });
+
+      checks.push({
+        name: 'a noscript fallback explains the app to visitors without JavaScript',
+        pass:
+          typeof noscript === 'string' &&
+          /<h1[\s>]/i.test(noscript) &&
+          KEYWORD.test(noscript) &&
+          noscript.replace(/<[^>]*>/g, '').trim().length >= 200,
+        detail:
+          noscript === null
+            ? 'no noscript element'
+            : `${noscript.replace(/<[^>]*>/g, '').trim().length} chars of prose, h1=${/<h1[\s>]/i.test(noscript)}`
+      });
+
+      // The landing page has to be reachable from the app, or nothing links to it.
+      const aboutLink = await page.evaluate(() => {
+        const link = [...document.querySelectorAll('footer a')].find((a) =>
+          /about/i.test(a.getAttribute('href') || '')
+        );
+        return link ? { href: link.getAttribute('href'), text: link.textContent.trim() } : null;
+      });
+
+      checks.push({
+        name: 'the footer links to the landing page',
+        pass: !!aboutLink,
+        detail: aboutLink ? JSON.stringify(aboutLink) : 'no link to /about in the footer'
+      });
+
+      /*
+       * Adding markup to the shell is exactly how the full-viewport layout gets broken, so
+       * this is checked at the narrow width rather than assumed.
+       */
+      await page.setViewport({ width: 375, height: 800 });
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
+      const narrow = await page.evaluate(() => ({
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        editorVisible: (document.querySelector('#editor')?.getBoundingClientRect().height || 0) > 100
+      }));
+      await page.setViewport({ width: 1400, height: 900 });
+
+      checks.push({
+        name: 'the app shell still fits at 375px with the fallback markup present',
+        pass: narrow.overflow <= 0 && narrow.editorVisible,
+        detail: `horizontal overflow ${narrow.overflow}px, editor visible ${narrow.editorVisible}`
+      });
+
+      // ---------- crawl plumbing ----------
+
+      /*
+       * Status is not evidence here. The dev server falls back to index.html for unknown
+       * paths, so a missing robots.txt still answers 200 — with HTML. Both checks therefore
+       * assert the content is the file it claims to be.
+       */
+      const fetchText = (target, path) =>
+        target.evaluate(async (p) => {
+          const response = await fetch(p, { cache: 'no-store' });
+          return { status: response.status, body: await response.text() };
+        }, path);
+
+      const robots = await fetchText(page, '/robots.txt');
+      checks.push({
+        name: 'robots.txt is served and points crawlers at the sitemap',
+        pass:
+          robots.status === 200 &&
+          !/<html/i.test(robots.body) &&
+          /^\s*User-agent:\s*\*/im.test(robots.body) &&
+          /^\s*Sitemap:\s*https:\/\/\S+sitemap\.xml\s*$/im.test(robots.body),
+        detail: /<html/i.test(robots.body)
+          ? 'served index.html — the file does not exist'
+          : JSON.stringify(robots.body.replace(/\s+/g, ' ').trim().slice(0, 90))
+      });
+
+      const sitemap = await fetchText(page, '/sitemap.xml');
+      const sitemapUrls = [...sitemap.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+      const parsedOk = await page.evaluate((xml) => {
+        const doc = new DOMParser().parseFromString(xml, 'application/xml');
+        return (
+          !doc.querySelector('parsererror') &&
+          doc.documentElement.tagName.toLowerCase() === 'urlset'
+        );
+      }, sitemap.body);
+
+      checks.push({
+        name: 'sitemap.xml parses as a urlset and lists both real pages',
+        pass:
+          sitemap.status === 200 &&
+          !/<html/i.test(sitemap.body) &&
+          parsedOk &&
+          sitemapUrls.length === 2 &&
+          sitemapUrls.some((u) => /\/$/.test(u)) &&
+          // `/about`, not `/about.html`: cleanUrls redirects the .html form, and listing a
+          // redirect source sends crawlers through a needless hop.
+          sitemapUrls.some((u) => /\/about$/.test(u)),
+        detail: /<html/i.test(sitemap.body)
+          ? 'served index.html — the file does not exist'
+          : `parses=${parsedOk}, urls=${JSON.stringify(sitemapUrls)}`
+      });
+
+      /*
+       * The landing page itself. Checked last, because it navigates away from the app.
+       *
+       * `/about.html`, not `/about`: the clean URL is a Vercel behaviour and the Vite dev
+       * server this suite runs against knows nothing about it, so testing `/about` would
+       * fail locally for a reason that has nothing to do with the product.
+       */
+      const aboutResponse = await page.goto(new URL('about.html', page.url()).href, {
+        waitUntil: 'domcontentloaded'
+      });
+
+      const about = await page.evaluate(() => {
+        const h1 = document.querySelector('h1');
+        const canonical = document.querySelector('link[rel="canonical"]');
+        return {
+          /*
+           * The dev server falls back to index.html for unknown paths, so a 200 proves
+           * nothing on its own — this check passed against a landing page that did not
+           * exist, measuring the app instead. The app shell always carries #editor; a
+           * static page never does. That absence is what makes the assertion real.
+           */
+          isApp: !!document.querySelector('#editor'),
+          title: document.title,
+          h1: h1 ? h1.textContent.trim() : null,
+          canonical: canonical ? canonical.getAttribute('href') : null,
+          bodyChars: document.body.innerText.replace(/\s+/g, ' ').trim().length,
+          headings: document.querySelectorAll('h2, h3').length,
+          backLink: [...document.querySelectorAll('a')].some(
+            (a) => (a.getAttribute('href') || '') === '/'
+          )
+        };
+      });
+
+      checks.push({
+        name: 'the landing page serves a real heading and substantial prose',
+        pass:
+          aboutResponse.status() === 200 &&
+          !about.isApp &&
+          KEYWORD.test(about.h1 || '') &&
+          about.bodyChars >= 800 &&
+          about.headings >= 2,
+        detail: `HTTP ${aboutResponse.status()}, app-fallback=${about.isApp}, h1=${JSON.stringify(about.h1)}, ${about.bodyChars} chars, ${about.headings} subheadings`
+      });
+
+      checks.push({
+        name: 'the landing page has its own title and canonical, and links back to the app',
+        pass:
+          !about.isApp &&
+          KEYWORD.test(about.title || '') &&
+          absoluteHttps(about.canonical) &&
+          // Its own canonical, not the homepage's — otherwise the fallback satisfies this.
+          //about/?$/.test(about.canonical || '') &&
+          about.backLink,
+        detail: `app-fallback=${about.isApp}, title=${JSON.stringify(about.title)}, canonical=${JSON.stringify(about.canonical)}, links home=${about.backLink}`
+      });
+
       checks.push({
         name: 'no console errors',
         pass: errors.length === 0,

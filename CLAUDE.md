@@ -90,8 +90,16 @@ Every keystroke also persists via `saveContent()` and updates the status bar.
 Every colour, space, radius and duration is a CSS custom property in
 `src/styles/tokens.css`; the two themes are the same token names with different ramps.
 **Do not add a `[data-theme="dark"]` override to a component stylesheet — add a token.**
-The one unavoidable duplication is `src/editor/themes.js`, because Monaco takes concrete
-hex values, not custom properties; when a token changes there, change it there too.
+There are exactly **two** places the ramp is duplicated, both unavoidable, and a token
+change has to be carried into both:
+
+- `src/editor/themes.js` — Monaco takes concrete hex values, not custom properties.
+- `public/about.html` and the `<noscript><style>` block in `index.html` — `public/` is
+  copied verbatim without passing through Vite, so it cannot import `tokens.css`; and every
+  stylesheet is imported by `src/main.js`, so with scripting disabled the page has no CSS at
+  all. Both hold ~6 values behind a `prefers-color-scheme` query. The alternative was a
+  `vite.config.js` with a second Rollup input, which would reverse the no-config decision
+  below.
 
 ### Dependency loading is deliberately inconsistent — respect it
 

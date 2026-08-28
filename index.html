@@ -41,11 +41,16 @@
     <!-- ===================================================================
          Search and social metadata.
 
-         ONE PLACE TO CHANGE THE DOMAIN: every absolute URL below lives in
-         this block and nowhere else. When a custom domain replaces the
-         Vercel alias, replace `https://markbeam.vercel.app` here — six
-         occurrences, all within these tags — and nothing outside this block
-         needs touching.
+         CHANGING THE DOMAIN: replace `https://markbeam.vercel.app` in this
+         block — six occurrences, all within these tags — and in three other
+         files that also carry absolute URLs and cannot reference this one:
+
+             public/about.html    (canonical + og:url + og:image)
+             public/robots.txt    (Sitemap:)
+             public/sitemap.xml   (both <loc> entries)
+
+         Those three are static files copied verbatim, so they have no way to
+         read a value from here. Grep for the host before declaring it done.
 
          Why the URL is repeated rather than held in a variable: social
          scrapers (Slack, Twitter, iMessage) do not run JavaScript, so these
@@ -104,6 +109,27 @@
       }
     </script>
 
+    <!-- Styling for the no-JavaScript case only.
+         Every stylesheet is imported by `src/main.js`, so with scripting off the page has no
+         CSS at all. This block is the only styling that reaches those visitors, which is why
+         it is inline and why it hides the app chrome: the toolbar, panes and status bar are
+         non-functional without the editor, so showing them would be worse than not.
+         Not cloaking — Googlebot executes JavaScript and sees the app, and this content says
+         the same thing the app does. -->
+    <noscript>
+      <style>
+        body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6; }
+        .toolbar, .pane-tabs, .workspace, .statusbar, .toasts { display: none; }
+        .noscript { max-width: 42rem; margin: 0 auto; padding: 3rem 1.25rem; }
+        .noscript h1 { font-size: 1.75rem; line-height: 1.2; }
+        .noscript a { color: #0d9488; }
+        @media (prefers-color-scheme: dark) {
+          body { background: #0e1015; color: #e8edf5; }
+          .noscript a { color: #4de1d0; }
+        }
+      </style>
+    </noscript>
+
     <!-- SVG first so the mark stays crisp on hidpi tabs; the PNG is the fallback for
          browsers that still do not take an SVG icon. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -112,6 +138,28 @@
   </head>
 
   <body data-view="split">
+    <!-- Without this, a visitor with JavaScript disabled got the toolbar and status bar and
+         nothing else: measured at 0 headings and 109 characters, all of it button labels,
+         with an empty editor and an empty preview. Editing genuinely requires JavaScript, so
+         this explains that rather than pretending otherwise, and points at the page that
+         does work without it. -->
+    <noscript>
+      <div class="noscript">
+        <h1>Markbeam — online Markdown editor with live preview</h1>
+        <p>
+          Markbeam renders Markdown as you type: source on the left, formatted output on the
+          right. It supports GitHub-Flavored Markdown, Mermaid diagrams, LaTeX math, callouts
+          and task lists, and exports to PDF, HTML, Word and Markdown. Documents are stored in
+          your own browser — there is no account and nothing is uploaded.
+        </p>
+        <p>
+          The editor itself needs JavaScript to run, so it cannot start right now. Enable
+          JavaScript for this site to use it, or read
+          <a href="/about.html">what Markbeam does</a> first.
+        </p>
+      </div>
+    </noscript>
+
     <header class="toolbar">
       <a class="brand" href="/" aria-label="Markbeam home">
         <span class="brand__mark" aria-hidden="true"></span>
@@ -248,6 +296,8 @@
         <span class="save-dot" id="save-dot" data-state="saved" aria-hidden="true"></span>
         <span id="save-label">Saved</span>
       </span>
+
+      <a class="statusbar__item" href="/about.html" title="What Markbeam does">About</a>
 
       <!-- Inline SVG rather than a shields.io image: an external badge would be a
            third-party request on every page load, which is exactly what was removed
