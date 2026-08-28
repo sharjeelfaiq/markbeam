@@ -39,8 +39,20 @@ jobs:
       - name: Check the build actually produced the app
         run: |
           test -f dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
-          grep -q "<title>Markbeam</title>" dist/index.html \
+
+          # Substring, not the exact tag. This asserted "<title>Markbeam</title>" and
+          # broke the moment the title gained the words people actually search for
+          # (T27) — a red main from a stale guard rather than a defect, and one no local
+          # run can catch because this check exists only here.
+          grep -qE "<title>[^<]*Markbeam[^<]*</title>" dist/index.html \
             || { echo "::error::built page is not Markbeam"; exit 1; }
+
+          # Vite copies public/ verbatim, so these are only ever missing if that stops
+          # happening — which would silently ship a site with no crawl plumbing, no
+          # social preview, and a 404 behind the footer's About link.
+          for f in about.html robots.txt sitemap.xml og.png favicon.svg; do
+            test -f "dist/$f" || { echo "::error::dist/$f missing — public/ was not copied"; exit 1; }
+          done
           echo "dist/ contents:"; ls -la dist
 
       # The suites drive a real browser: Monaco, Mermaid rendering and canvas

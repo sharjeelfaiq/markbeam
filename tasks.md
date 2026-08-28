@@ -48,6 +48,50 @@ to contribute back to.
 
 ## Completed
 
+### [x] T30 · The CI build guard pinned the exact title, so T27 turned main red — 2026-08-28
+
+CI failed on `67a680d` at **Check the build actually produced the app** — not the suite. Deploy
+was skipped, so T27, T28 and T29 all sat unpublished behind a guard rather than a defect.
+
+**Root cause.** `.github/workflows/ci.yml:42` asserted an exact string:
+
+```
+grep -q "<title>Markbeam</title>" dist/index.html
+```
+
+T27 changed the title to *Markbeam — Online Markdown Editor with Live Preview*, which is the
+entire point of that task, and the guard had no way to survive it.
+
+**Why no local run could have caught this.** The check exists only in the workflow. `npm test`
+and `npx vite build` both pass; the assertion is not part of either. This is a fourth entry in
+the local-green/CI-red pattern already recorded under Testing in `CLAUDE.md`, and the first
+where the cause was a stale guard rather than an environment difference.
+
+**Reproduced locally before fixing**, against the same `dist` CI built from:
+
+```
+old guard: FAIL — this is what broke CI
+new guard: pass
+```
+
+**Fix.** Substring match on the title, plus a loop asserting that every file Vite copies from
+`public/` actually landed:
+
+```
+grep -qE "<title>[^<]*Markbeam[^<]*</title>" dist/index.html
+for f in about.html robots.txt sitemap.xml og.png favicon.svg; do test -f "dist/$f"; done
+```
+
+The second half is the more valuable addition. Those five files are only ever absent if `public/`
+stops being copied, which would silently ship a site with no crawl plumbing, no social preview
+and a 404 behind the footer's About link — none of which the browser suites would notice,
+because they run against the dev server where `public/` is served directly.
+
+**No user-visible change**, and no application code touched: the diff is one workflow file. The
+app was byte-identical to the 18/18 run that preceded it.
+
+---
+
 ### [x] T28 · A crawler — and a visitor without JavaScript — saw no content — 2026-08-28
 
 **Why:** the served HTML had no `<h1>` and no body prose. Every visible word arrived after JS
