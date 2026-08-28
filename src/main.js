@@ -13,12 +13,18 @@ import { createEditor, setEditorTheme } from './editor/index.js';
 import { renderMarkdown } from './markdown/index.js';
 import { loadEmoji } from './markdown/emoji.js';
 import { hasMath, loadMath } from './markdown/math.js';
-import { onMermaidRender, renderMermaidForTheme, scheduleMermaidRender } from './mermaid/index.js';
+import {
+  applyPrintDiagrams,
+  onMermaidRender,
+  renderMermaidForTheme,
+  restoreScreenDiagrams,
+  scheduleMermaidRender
+} from './mermaid/index.js';
 import { exportPreviewToPdf, filenameFromTitle } from './export/pdf.js';
 import { buildStandaloneHtml, buildWordDocument } from './export/document.js';
 import { downloadText } from './export/download.js';
 import { copyPreviewAsHtml } from './export/html.js';
-import { getPreference, cyclePreference, initTheme, onThemeChange } from './theme.js';
+import { getPreference, cyclePreference, initPrintTheme, initTheme, onThemeChange } from './theme.js';
 import {
   buildShareUrl,
   clearSharedFragment,
@@ -63,6 +69,11 @@ const init = () => {
   migrateLegacyStorage();
 
   const resolvedTheme = initTheme();
+  /*
+   * Callbacks rather than a direct import inside `theme.js`: the mermaid module already
+   * imports it, and this codebase passes functions across boundaries instead of cycling.
+   */
+  initPrintTheme({ onEnter: applyPrintDiagrams, onLeave: restoreScreenDiagrams });
 
   initStatusBar();
   // The palette is wired below, but `toggle` is a module-level export: passing it here is

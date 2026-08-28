@@ -682,3 +682,64 @@ kbd {
     display: none;
   }
 }
+
+/* ============================ print ============================ */
+
+/*
+ * Ctrl+P should produce the document, not a photograph of the app.
+ *
+ * Hiding the chrome is only half of it. The screen layout is built for an app —
+ * `height: 100dvh`, `overflow: hidden`, and a preview pane that scrolls — and a printed
+ * page has no viewport, so leaving those in place prints exactly one screenful and
+ * silently discards the rest of the document. Releasing them is the part that matters.
+ */
+@media print {
+  .toolbar,
+  .statusbar,
+  .beam,
+  .pane--editor,
+  .pane-tabs,
+  .toasts,
+  dialog {
+    display: none !important;
+  }
+
+  html,
+  body {
+    display: block;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .workspace {
+    display: block;
+    min-height: 0;
+  }
+
+  /*
+   * Full width, and no longer a scroll container — this is what stops the clipping.
+   *
+   * `display: block` is not redundant: `body[data-view='editor'] .pane--preview` hides this
+   * pane on screen, and without overriding it here, printing while in Editor-only view
+   * produced a completely blank page. What gets printed is the document, not whichever
+   * pane happened to be on screen.
+   */
+  .pane--preview {
+    display: block !important;
+    width: 100% !important;
+    height: auto;
+    overflow: visible;
+    border-left: 0;
+    background: transparent;
+  }
+
+  /* The paper supplies the margin, so the screen padding would only double it. */
+  .preview-body {
+    padding: 0;
+  }
+
+  @page {
+    margin: 18mm 16mm;
+  }
+}

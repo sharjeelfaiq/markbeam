@@ -523,3 +523,38 @@
   outline-offset: 2px;
   border-radius: 1px;
 }
+
+/* ---------- print ---------- */
+
+/*
+ * Keep whole things whole. A table or diagram split across a page break is far harder to
+ * read on paper than on screen, where scrolling makes the seam invisible.
+ */
+@media print {
+  .mb-md pre,
+  .mb-md table,
+  .mb-md .mermaid,
+  .mb-md .markdown-alert,
+  .mb-md blockquote {
+    break-inside: avoid;
+  }
+
+  /* A heading stranded at the foot of a page belongs with what follows it. */
+  .mb-md h1,
+  .mb-md h2,
+  .mb-md h3,
+  .mb-md h4 {
+    break-after: avoid;
+  }
+
+  /* Tables scroll horizontally on screen; on paper they must simply fit. */
+  .mb-md table {
+    display: table;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .mb-md .mermaid {
+    overflow: visible;
+  }
+}

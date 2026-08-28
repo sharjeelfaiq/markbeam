@@ -24,12 +24,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Product
 
-### [ ] T12 · Print stylesheet
-
-**Done when:** Ctrl+P produces a clean document — no toolbar, editor or status bar.
-
----
-
 ### [ ] T22 · Autosave history
 
 **Why:** deferred out of T9 rather than smuggled into it. T9's Approach named it, but its
@@ -59,6 +53,128 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T12 · Print stylesheet — 2026-08-28
+
+**Why:** there were no print rules anywhere — `grep` for `@media print` across `src/` and
+`index.html` returned nothing. Ctrl+P produced the whole app on a dark background.
+
+### The title understated it: printing was losing the document
+
+Hiding chrome is the easy half. The screen layout is built for an app —
+`body { height: 100dvh; overflow: hidden }` with the preview pane on `overflow-y: auto` —
+and a printed page has no viewport. So the real defect was not an ugly printout but a
+**truncated** one: everything past the visible screenful was silently discarded.
+
+```
+BASELINE  ✗ a long document prints to more than one page   1 page rendered
+FIXED     ✓ 11 pages rendered
+```
+
+Every structural check can pass on a clipped document, because a clipped page is not blank
+— it is a tidy, wrong first page. That is why the page count is the check that matters.
+
+**A second real bug, found by measuring rather than assuming:** printing while in
+Editor-only view produced a **completely blank page**.
+`body[data-view='editor'] .pane--preview { display: none }` is a screen rule that survived
+into print media. What gets printed is the document, not whichever pane happens to be on
+screen, so the print block now forces `display: block`. Covered by its own check.
+
+**Light output without duplicating tokens.** `beforeprint`/`afterprint` swap `data-theme`
+rather than copying the light ramp into `@media print`, so the printed page uses exactly the
+same tokens as the screen and the two cannot drift. Measured: `app theme dark, at print time
+light, text rgb(13, 18, 25)`, restored to dark afterwards.
+
+Two signals are needed and which fires when was measured, not assumed: **`beforeprint` fires
+for Ctrl+P and for headless PDF but not for emulated print media**, while a
+`matchMedia('print')` change fires for emulation. They can also fight — a PDF render inside
+an already-printing context fires `afterprint` while printing is still active — so
+`leavePrint` defers to the media query, and `enterPrint` is idempotent. An early-returning
+`enterPrint` was a genuine bug: after a few media changes it left the page dark.
+
+### Mermaid diagrams printed black, and that is fixed too
+
+Forcing the light ramp does nothing for a diagram: Mermaid bakes theme colours into the SVG
+it emits, and an SVG is not CSS. This was first recorded as a deferred limitation, because
+`beforeprint` is synchronous and a re-render is not — re-rendering inside the event is a
+race that merely usually wins.
+
+Fixed by removing the race instead: **a light copy of each diagram is rendered to a string
+on idle**, so the swap at print time is a synchronous `innerHTML` assignment. Cached by
+source rather than by element, since `convert()` replaces `#output`'s children on every
+keystroke.
+
+```
+BASELINE  ✗ node fill rgb(31, 32, 32)    (32/255)
+FIXED     ✓ node fill rgb(236, 236, 255) (237/255), screen still rgb(31, 32, 32)
+```
+
+**Cost, measured rather than waved away:**
+
+```
+1 diagram   visible at 321ms, light copies ready at 739ms  (+418ms, on idle)
+6 diagrams  visible at 436ms, light copies ready at 969ms  (+533ms, on idle)
+print swap  apply 2.2ms, restore 2.6ms
+```
+
+The extra render is off the critical path and the swap is ~2ms. A cold cache prints exactly
+as before — no regression, only a missed improvement — and a diagram that fails to
+pre-render now warns to the console rather than being swallowed, because a silent catch
+there is indistinguishable from "the cache is merely cold" until someone prints.
+
+**Three false trails, all mine, recorded so they are not re-walked:**
+
+1. `printDiagramsReady()` as an exported predicate read `false` while the feature worked
+   perfectly. Vite serves an edited module as `?t=…`, so a plain `import()` from the page
+   gets a **second module instance with its own empty cache**. Readiness is now mirrored
+   onto `#output[data-print-diagrams]`, observable without importing anything.
+2. "6 diagrams never warm the cache in 25s" was that same phantom, not a real failure.
+3. A timing run reporting `7ms` was measuring nothing — the clock started after
+   `networkidle2`, by which point rendering had already finished.
+
+**Measured page-break behaviour** at an A4 content box of 673×986px: **no block straddles a
+page break** — `pre`, `table`, `.mermaid` and `.markdown-alert` all intact — chrome all
+`none`, theme light.
+
+One fixture artefact worth naming: an early check showed math as raw `\sum` text. That was
+shell escaping in my scratch fixture, not a product bug; re-tested with a heredoc, math
+renders correctly.
+
+**Verify vs reference:** the reference has no print handling whatever. Measured:
+
+```
+reference @media print rules   0
+in print media                 header visible, editor visible
+reference printed pages        1
+```
+
+Paste a long document — several hundred lines — into both sites and press **Ctrl+P**.
+
+On https://markdownlivepreview.com the preview dialog shows the entire application: its
+header, both panes, the editor. It is **one page**, and everything below the fold is simply
+gone.
+
+On http://localhost:5173 you get the rendered document alone — no toolbar, no editor, no
+status bar — flowing across as many pages as it needs, in light colours even if you were
+working in the dark theme, with tables, code blocks, callouts and diagrams never split
+across a page break.
+
+Two preconditions worth knowing. Print from the **dark** theme, or the colour handling is
+not exercised at all. And give the page a moment after a diagram appears: the light copy is
+prepared on idle roughly half a second after the diagram renders, so printing instantly on
+load may catch a cold cache and print that one diagram dark.
+
+To measure rather than eyeball, run this in the console on each site:
+
+```js
+[...document.styleSheets].reduce((n, s) => {
+  try { return n + [...s.cssRules].filter((r) => r.media && /print/.test(r.media.mediaText)).length; }
+  catch (e) { return n; }
+}, 0)
+```
+
+The reference reports `0`. Ours reports its print blocks.
+
 
 ### [x] T11 · Shareable URL links — 2026-08-28
 
