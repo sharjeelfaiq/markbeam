@@ -38,3 +38,32 @@ export const editorText = async (page) => {
   );
   return raw.replace(/\s+/g, ' ').trim();
 };
+
+/*
+ * Seed the document a suite wants open, then let the app adopt it on the next load.
+ *
+ * Since multiple documents landed, `markbeam:last_state` is a compatibility mirror rather
+ * than the source of truth — the app reads the document index instead, and rewrites the
+ * mirror from whatever it opened. Writing that key alone therefore seeds nothing: the app
+ * had already built an index on the first load and simply overwrote it. Clearing the index
+ * puts the profile back into the pre-multi-document shape, so the app's own migration
+ * adopts this content, which is also the path a returning user takes.
+ */
+export const seedDocument = async (page, markdown, title = 'Untitled') => {
+  await page.evaluate(
+    ({ md, t }) => {
+      Object.keys(localStorage)
+        .filter(
+          (key) =>
+            key === 'markbeam:docs' ||
+            key === 'markbeam:active_doc' ||
+            key.startsWith('markbeam:doc:')
+        )
+        .forEach((key) => localStorage.removeItem(key));
+
+      localStorage.setItem('markbeam:last_state', JSON.stringify({ v: md }));
+      localStorage.setItem('markbeam:doc_title', JSON.stringify({ v: t }));
+    },
+    { md: markdown, t: title }
+  );
+};

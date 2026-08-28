@@ -52,14 +52,31 @@
         Markbeam
       </a>
 
-      <input
-        id="doc-title"
-        class="doc-title"
-        type="text"
-        value="Untitled"
-        aria-label="Document title"
-        spellcheck="false"
-        autocomplete="off">
+      <!-- Title and caret share one box so the pair reads as a combobox. The switcher
+           belongs with the thing that names the document, and anchoring it here costs no
+           width on a toolbar row that is already full. -->
+      <div class="doc-switcher">
+        <input
+          id="doc-title"
+          class="doc-title"
+          type="text"
+          value="Untitled"
+          aria-label="Document title"
+          spellcheck="false"
+          autocomplete="off">
+
+        <button
+          id="docs-button"
+          class="btn btn--icon btn--caret"
+          type="button"
+          title="Documents"
+          aria-label="Documents"
+          aria-haspopup="dialog">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 6.5 8 10.5l4-4"/>
+          </svg>
+        </button>
+      </div>
 
       <span class="toolbar__spacer"></span>
 
@@ -195,6 +212,13 @@
         autocomplete="off"
         spellcheck="false">
       <ul class="sheet__list" id="palette-list" role="listbox" aria-label="Commands"></ul>
+    </dialog>
+
+    <!-- Reuses the palette's `sheet` styling wholesale; the only new CSS is the row layout
+         for a document's name and its timestamp. -->
+    <dialog class="sheet" id="docs" aria-label="Documents">
+      <ul class="sheet__list" id="docs-list" aria-label="Open a document"></ul>
+      <ul class="sheet__list sheet__list--actions" id="docs-actions" aria-label="Document actions"></ul>
     </dialog>
   </body>
 </html>

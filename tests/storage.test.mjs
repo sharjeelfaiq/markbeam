@@ -99,14 +99,26 @@ export const suite = {
         detail: shown.slice(0, 48)
       });
 
-      // Second load must be a no-op, not a re-migration that clobbers newer edits.
-      await page.evaluate(() =>
-        localStorage.setItem('markbeam:last_state', JSON.stringify({ v: '# Edited after migrating' }))
-      );
+      /*
+       * Second load must be a no-op, not a re-migration that clobbers newer edits.
+       *
+       * The edit is written to the active document rather than to `markbeam:last_state`.
+       * Since multiple documents landed, that key is a compatibility mirror the app
+       * rewrites from whatever it opens — writing to it would test nothing, and did
+       * silently pass through it before this was corrected.
+       */
+      await page.evaluate(() => {
+        const activeId = JSON.parse(localStorage.getItem('markbeam:active_doc')).v;
+        localStorage.setItem(
+          `markbeam:doc:${activeId}`,
+          JSON.stringify({ v: '# Edited after migrating' })
+        );
+      });
       await reload(page);
-      const afterSecondLoad = await page.evaluate(() =>
-        localStorage.getItem('markbeam:last_state')
-      );
+      const afterSecondLoad = await page.evaluate(() => {
+        const activeId = JSON.parse(localStorage.getItem('markbeam:active_doc')).v;
+        return localStorage.getItem(`markbeam:doc:${activeId}`);
+      });
       checks.push({
         name: 'migration does not re-run and overwrite newer content',
         pass: typeof afterSecondLoad === 'string' && afterSecondLoad.includes('Edited after migrating'),

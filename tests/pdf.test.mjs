@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { seedDocument, sleep, withPage } from './lib.mjs';
 
 /*
  * Regression cover for PDF export.
@@ -188,9 +188,7 @@ export const suite = {
       const out = [];
 
       await page.evaluateOnNewDocument(MEASURE_INK);
-      await page.evaluate((doc) => {
-        localStorage.setItem('markbeam:last_state', JSON.stringify({ v: doc }));
-      }, DIAGRAM_DOC);
+      await seedDocument(page, DIAGRAM_DOC);
       await page.reload({ waitUntil: 'networkidle2' });
       await page.waitForFunction(() => !!document.querySelector('#output .mermaid svg'), {
         timeout: 30000

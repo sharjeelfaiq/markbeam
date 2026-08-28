@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { seedDocument, sleep, withPage } from './lib.mjs';
 
 /*
  * `:emoji:` shortcodes (T5, #95).
@@ -34,9 +34,7 @@ const DOC = [
 ].join('\n');
 
 const seed = async (page, markdown) => {
-  await page.evaluate((doc) => {
-    localStorage.setItem('markbeam:last_state', JSON.stringify({ v: doc }));
-  }, markdown);
+  await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
   await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
     timeout: 30000

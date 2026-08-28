@@ -68,10 +68,23 @@ body {
   box-shadow: 0 0 8px var(--beam-glow);
 }
 
-.doc-title {
+/* Title and caret as one control, so the caret sits inside the field instead of drifting
+   away from the name it belongs to. */
+.doc-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
   flex: 0 1 220px;
   min-width: 80px;
+}
+
+.doc-title {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   padding: var(--sp-1) var(--sp-2);
+  /* Room for the caret, which is absolutely positioned inside this field. */
+  padding-right: 24px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: transparent;
@@ -521,6 +534,61 @@ kbd {
   color: var(--text-3);
   font-size: var(--text-sm);
   text-align: center;
+}
+
+/* ---------- document sheet ---------- */
+
+/* The actions sit below the document list, divided from it. */
+/*
+ * The document sheet is a dropdown, not a centred command palette: it belongs under the
+ * title it was opened from. A modal <dialog> centres itself, so the placement is set
+ * explicitly rather than inherited from `.sheet`.
+ */
+#docs {
+  width: min(320px, calc(100vw - var(--sp-5)));
+  margin: 0;
+  top: calc(var(--toolbar-h) + 4px);
+  left: var(--sp-4);
+}
+
+.sheet__list--actions {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+
+/* A long document name must not push its timestamp off the row. */
+.sheet__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet__hint {
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+/* The open document, marked the same way the active view mode is. */
+.sheet__item[aria-current='true'] {
+  color: var(--beam);
+}
+
+/* Inside the title field, at its right edge — the combobox convention. */
+.btn--caret {
+  position: absolute;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+}
+
+.btn--caret svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* ============================ responsive ============================ */

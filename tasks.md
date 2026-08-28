@@ -24,21 +24,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Product
 
-### [ ] T9 · Multiple documents
-
-**Why:** The app holds exactly one document in one localStorage key — the main thing
-separating it from a scratchpad.
-
-**Approach:** Named documents, a switcher, autosave history. Rename the
-`com.markdownlivepreview` namespace here **with migration**. Storehouse hashes its keys
-(MD5 of `namespace-key`), so always read through the library, never by reconstructing key
-strings.
-
-**Done when:** documents can be created, renamed, switched and deleted; existing saved
-content is migrated, not orphaned.
-
----
-
 ### [ ] T10 · Export HTML / DOCX / `.md` (#99, #57)
 
 **Done when:** each format downloads and opens correctly, named from the document title.
@@ -54,6 +39,17 @@ content is migrated, not orphaned.
 ### [ ] T12 · Print stylesheet
 
 **Done when:** Ctrl+P produces a clean document — no toolbar, editor or status bar.
+
+---
+
+### [ ] T22 · Autosave history
+
+**Why:** deferred out of T9 rather than smuggled into it. T9's Approach named it, but its
+Done-when did not require it, and it is a separate feature: a snapshot cadence, a
+localStorage quota strategy and a restore UI.
+
+**Done when:** a document can be rolled back to an earlier autosaved state, and history
+cannot grow until it exhausts the origin's storage quota.
 
 ---
 
@@ -75,6 +71,145 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T9 · Multiple documents — 2026-08-27
+
+**Why:** the app held exactly one document in one key. There was no way to keep a second
+note without destroying the first.
+
+**The task's Approach was stale, and the code was trusted instead.** T9 said to rename the
+`com.markdownlivepreview` namespace with migration, and warned that Storehouse hashes its
+keys so everything must go through the library. Both had already been overtaken: Storehouse
+was removed during the separation work, `src/storage.js` uses plain `markbeam:*` keys, and
+`migrateLegacyStorage()` already recovers the old hashed records. **The migration this task
+actually needed was a different one** — adopting the single document in
+`markbeam:last_state` as document #1, which is what the Done-when clause protects.
+
+**Schema:**
+
+```
+markbeam:docs        [{ id, title, updatedAt }, …]
+markbeam:doc:<id>    the markdown
+markbeam:active_doc  the open document's id
+```
+
+One key per document rather than a single blob: a blob rewrites every document on every
+keystroke, and one oversized document would take all the others down with it at quota.
+
+**`markbeam:last_state` is now a compatibility mirror, not the source of truth.** It is
+still written on every change so a rollback to an older build still finds the last-open
+document — but the app reads the index. That demotion is the single most consequential fact
+in this change, and it is what broke the test suite.
+
+**UI:** the title and a caret share one box and read as a combobox; the caret opens a sheet
+listing documents with New / Rename / Delete. Reuses the command palette's `.sheet` classes.
+Per document: title and content only. View mode, split ratio, sync scroll, theme and
+markdown mode stay global — they are preferences about the workspace, not the text.
+
+Rules the implementation holds: there is never zero documents (deleting the last one leaves
+a fresh empty `Untitled`); delete sits behind `window.confirm`; switching flushes the
+current buffer first.
+
+**Measured**, nine checks, all failing against HEAD:
+
+```
+BASELINE  ✗ pre-existing single document adopted as #1   no document index exists
+          ✗ document menu opens from the toolbar         no #docs-button
+          ✗ creating switches, previous left intact      no New document action
+          ✗ switching back restores the other document   editor "# Second document"
+          ✗ each document stored under its own key       0 markbeam:doc:* keys
+          ✗ renaming updates title and list entry        index []
+          ✗ active document survives a reload            null -> null
+          ✗ deleting falls back to another document      0 left
+          ✗ deleting the last leaves one empty Untitled  0 documents
+FIXED     ✓ index ["Legacy note"], editor "# Legacy note keep me"
+          ✓ sheet open
+          ✓ 2 documents, now on "Untitled"
+          ✓ editor "# Legacy note keep me"
+          ✓ 2 markbeam:doc:* keys
+          ✓ title "Renamed note", index ["Untitled","Renamed note"]
+          ✓ dmtcp5f3qkgo08 -> dmtcp5f3qkgo08
+          ✓ 1 left: ["Untitled"]
+          ✓ 1 document, title "Untitled", editor ""
+```
+
+### This change broke seven suites, and two others were green over a false premise
+
+The first full run after implementation failed **storage, alerts, emoji, highlight, math,
+editor and copy html**. Every one of them seeds a document with
+`localStorage.setItem('markbeam:last_state', …)` and reloads — but by then the app has
+already built an index on its first load, so the seed was ignored and then overwritten by
+the mirror write. The idiom was stale, not the suites.
+
+Worse, two suites *passed* while measuring the wrong thing:
+
+- **`pdf`** fell back to the welcome document, so its Mermaid crop check was measuring the
+  **welcome diagram** rather than its own `graph LR` fixture — the T21 regression check was
+  quietly pointed at the wrong diagram.
+- **`scroll`** passed only because the welcome document happens to be long enough to scroll.
+
+`gfm` was unaffected solely because it calls `localStorage.clear()` first.
+
+Fixed with a shared **`seedDocument()`** in `tests/lib.mjs` that clears the document index
+before writing the legacy keys, so the app's own migration adopts the content — the same
+path a returning user takes. Eight suites now call it instead of hand-rolling the write.
+
+**`storage.test.mjs`'s re-migration check had become vacuous** and needed a real correction,
+not a mechanical one: it wrote to `markbeam:last_state` to represent "a newer edit", which
+the app now simply overwrites from whatever it opened. It writes through the active
+document key instead.
+
+**Two self-inflicted false alarms, both worth recording:**
+
+1. The first baseline run **hung forever** instead of failing. `answerDialog` waited on a
+   `window.prompt` that never fires when the action being clicked does not exist. The wait
+   is now bounded, so a missing action fails the check rather than stalling the suite.
+2. The by-hand walkthrough reported catastrophic content bleeding — every document showing
+   the first one's text. The script created three documents without renaming them, so all
+   three were `Untitled`, selecting by title matched nothing, and no switch ever happened.
+   **The script was wrong, not the app.** Every click in it now asserts that it landed.
+
+**Looked at, not just asserted.** The first screenshots caught two real defects the tests
+could not: the sheet inherited the palette's centring and opened as a centred modal instead
+of a dropdown under the title, and the caret sat ~200px from the title text because
+`.doc-title` is a fixed 220px box. Both fixed — `#docs` is positioned under the toolbar, and
+the title and caret now share a `.doc-switcher` box with the caret inside the field. Toolbar
+stays 48px and there is no overflow at 375px in either theme.
+
+**Verified by hand** after the fixes: three named documents, switched back and forth three
+rounds in a non-linear order, each keeping its own content; deleting the middle one leaves
+the other two; both survive a reload with their text intact.
+
+**Known limitation:** `localStorage` is ~5 MB per origin, and `write()` warns and drops on
+quota. No quota strategy in this task. Autosave history is deferred to **T22**.
+
+**Verify vs reference:** the reference is single-document, so this is an honest "no
+equivalent" rather than a behavioural contrast. Measured on
+https://markdownlivepreview.com:
+
+```
+controls              ["Markdown Live Preview", "Reset", "Copy", "Export PDF"]
+document-list widgets 0
+localStorage keys     ["27cf344e7411b69e8a80b95a99c321e7"]
+```
+
+That single opaque key is the hashed-key scheme this project removed — a neat illustration
+of the difference, since ours stores one readable `markbeam:doc:<id>` per document.
+
+Type something into each site. On ours, open the caret beside the title, choose **New
+document**, type something different, then switch back — the first document is exactly as
+you left it. On the reference there is one buffer: replacing the text loses what was there,
+and **Reset** is the only document-level action, which restores the sample rather than
+keeping your work.
+
+To measure rather than eyeball, run this in the console on each site:
+
+```js
+Object.keys(localStorage).filter((k) => k.startsWith('markbeam:doc:')).length
+```
+
+Ours reports the number of documents you have. The reference reports `0` — it has no such
+key, only the single hashed one above.
 
 ### [x] T8 · GFM toggle, footnotes, task lists — 2026-08-27 (#96)
 

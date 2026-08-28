@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { seedDocument, sleep, withPage } from './lib.mjs';
 
 /*
  * Sync scroll, both directions (#61).
@@ -22,15 +22,13 @@ const LONG_DOCUMENT = Array.from(
   (_, i) => `Line ${i + 1} of a long document.`
 ).join('\n\n');
 
-const seed = (page, syncEnabled) =>
-  page.evaluate(
-    (doc, sync) => {
-      localStorage.setItem('markbeam:last_state', JSON.stringify({ v: doc }));
-      localStorage.setItem('markbeam:scroll_bar_settings', JSON.stringify({ v: sync }));
-    },
-    LONG_DOCUMENT,
+const seed = async (page, syncEnabled) => {
+  await seedDocument(page, LONG_DOCUMENT);
+  await page.evaluate(
+    (sync) => localStorage.setItem('markbeam:scroll_bar_settings', JSON.stringify({ v: sync })),
     syncEnabled
   );
+};
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });

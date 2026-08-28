@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { seedDocument, sleep, withPage } from './lib.mjs';
 
 /*
  * LaTeX / math rendering (T7, #108, #54).
@@ -47,9 +47,7 @@ const DOC = [
 const PDF_DOC = '$$\\int_0^1 \\frac{x^2 + 1}{\\sqrt{x}}\\,dx = \\frac{16}{5}$$';
 
 const seed = async (page, markdown) => {
-  await page.evaluate((doc) => {
-    localStorage.setItem('markbeam:last_state', JSON.stringify({ v: doc }));
-  }, markdown);
+  await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
   await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
     timeout: 30000

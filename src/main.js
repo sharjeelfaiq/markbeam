@@ -19,8 +19,17 @@ import { copyPreviewAsHtml } from './export/html.js';
 import { getPreference, cyclePreference, initTheme, onThemeChange } from './theme.js';
 import {
   migrateLegacyStorage,
+  migrateSingleDocument,
   loadContent,
   loadDocTitle,
+  loadDocIndex,
+  saveDocIndex,
+  loadActiveDocId,
+  saveActiveDocId,
+  loadDoc,
+  saveDoc,
+  deleteDoc,
+  newDocId,
   loadMarkdownMode,
   loadScrollSync,
   saveContent,
@@ -29,6 +38,7 @@ import {
   saveScrollSync
 } from './storage.js';
 import { initPalette, toggle as togglePalette } from './ui/palette.js';
+import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
 import { getViewMode, initViewMode, onViewModeChange, setViewMode } from './ui/viewmode.js';
 import { initDivider } from './ui/divider.js';
 import { initStatusBar, markSaving, updateCounts, updateCursor } from './ui/statusbar.js';
@@ -119,11 +129,38 @@ const init = () => {
     editor.focus();
   };
 
+  /*
+   * Documents.
+   *
+   * `documents` mirrors the stored index and `activeDocId` names the open one. Content is
+   * written per document; `saveContent` keeps writing the legacy single-document key too,
+   * so an older build — or a rollback — still finds the document the user last had open.
+   */
+  let documents = [];
+  let activeDocId = null;
+
+  let touchActive = () => {
+    const entry = documents.find((doc) => doc.id === activeDocId);
+    if (entry) {
+      entry.updatedAt = Date.now();
+    }
+  };
+
+  let persistDocuments = () => saveDocIndex(documents);
+
   editor.onDidChangeModelContent(() => {
     const value = editor.getValue();
     convert(value);
     ensureMath(value);
+
+    if (activeDocId) {
+      saveDoc(activeDocId, value);
+      touchActive();
+      persistDocuments();
+    }
+    // Kept in step so a downgrade still opens the document the user was last editing.
     saveContent(value);
+
     updateCounts(value);
     markSaving();
   });
@@ -184,12 +221,37 @@ const init = () => {
   // ---------- title ----------
 
   let docTitle = loadDocTitle();
+
+  let setDocTitle = (value) => {
+    docTitle = value.trim() || 'Untitled';
+    saveDocTitle(docTitle);
+
+    if (titleInput) {
+      titleInput.value = docTitle;
+    }
+
+    const entry = documents.find((doc) => doc.id === activeDocId);
+    if (entry) {
+      entry.title = docTitle;
+      persistDocuments();
+      refreshDocuments();
+    }
+  };
+
   if (titleInput) {
     titleInput.value = docTitle;
 
     titleInput.addEventListener('input', () => {
+      // Deliberately not routed through setDocTitle: rewriting `titleInput.value` while
+      // someone is typing in it would move the caret to the end on every keystroke.
       docTitle = titleInput.value.trim() || 'Untitled';
       saveDocTitle(docTitle);
+
+      const entry = documents.find((doc) => doc.id === activeDocId);
+      if (entry) {
+        entry.title = docTitle;
+        persistDocuments();
+      }
     });
 
     titleInput.addEventListener('blur', () => {
@@ -203,6 +265,108 @@ const init = () => {
       }
     });
   }
+
+  // ---------- documents ----------
+
+  /*
+   * Flush before leaving a document. Monaco's change event has already saved every
+   * keystroke, but switching is the one moment where losing the last one would be
+   * unrecoverable, so it costs nothing to be certain.
+   */
+  let flushActive = () => {
+    if (!activeDocId) {
+      return;
+    }
+    saveDoc(activeDocId, editor.getValue());
+    touchActive();
+    persistDocuments();
+  };
+
+  let openDocument = (id) => {
+    const entry = documents.find((doc) => doc.id === id);
+    if (!entry) {
+      return;
+    }
+
+    activeDocId = id;
+    saveActiveDocId(id);
+    setValue(loadDoc(id));
+
+    docTitle = entry.title || 'Untitled';
+    saveDocTitle(docTitle);
+    if (titleInput) {
+      titleInput.value = docTitle;
+    }
+
+    ensureMath(editor.getValue());
+    updateCounts(editor.getValue());
+    refreshDocuments();
+  };
+
+  let switchDocument = (id) => {
+    if (id === activeDocId) {
+      return;
+    }
+    flushActive();
+    openDocument(id);
+    toast(`Switched to ${documents.find((doc) => doc.id === id)?.title || 'document'}`);
+  };
+
+  let createDocument = ({ silent = false } = {}) => {
+    flushActive();
+
+    const id = newDocId();
+    documents.unshift({ id, title: 'Untitled', updatedAt: Date.now() });
+    saveDoc(id, '');
+    persistDocuments();
+    openDocument(id);
+
+    if (!silent) {
+      toast('New document');
+    }
+    return id;
+  };
+
+  let renameDocument = () => {
+    const entry = documents.find((doc) => doc.id === activeDocId);
+    const next = window.prompt('Rename document', entry ? entry.title : docTitle);
+    if (next === null) {
+      return;
+    }
+
+    setDocTitle(next);
+    toast(`Renamed to ${docTitle}`);
+  };
+
+  let deleteDocument = () => {
+    if (!activeDocId) {
+      return;
+    }
+
+    const entry = documents.find((doc) => doc.id === activeDocId);
+    if (!window.confirm(`Delete "${entry ? entry.title : docTitle}"? This cannot be undone.`)) {
+      return;
+    }
+
+    deleteDoc(activeDocId);
+    documents = documents.filter((doc) => doc.id !== activeDocId);
+    persistDocuments();
+
+    /*
+     * Never leave the app with nothing open. Deleting the last document hands back a fresh
+     * empty one rather than an editor bound to no document, which would silently drop
+     * anything typed next.
+     */
+    if (documents.length === 0) {
+      activeDocId = null;
+      createDocument({ silent: true });
+      toast('Document deleted');
+      return;
+    }
+
+    openDocument(documents[0].id);
+    toast('Document deleted');
+  };
 
   // ---------- actions ----------
 
@@ -416,8 +580,38 @@ const init = () => {
 
   onMermaidRender(pulseBeam);
 
-  const saved = loadContent();
-  setValue(saved || DEFAULT_DOCUMENT);
+  /*
+   * Adopt the pre-multi-document profile, then open whichever document was last active.
+   * `migrateSingleDocument` is a no-op once an index exists, so this is safe on every load.
+   */
+  migrateSingleDocument();
+  documents = loadDocIndex() || [];
+
+  initDocuments({
+    getDocuments: () => documents,
+    getActiveId: () => activeDocId,
+    onSwitch: switchDocument,
+    onCreate: createDocument,
+    onRename: renameDocument,
+    onDelete: deleteDocument
+  });
+
+  const storedActive = loadActiveDocId();
+  const startId = documents.some((doc) => doc.id === storedActive)
+    ? storedActive
+    : documents[0]?.id;
+
+  if (startId) {
+    openDocument(startId);
+    // A brand-new profile has an empty document; give it the welcome text as before.
+    if (!editor.getValue()) {
+      setValue(DEFAULT_DOCUMENT);
+    }
+  } else {
+    createDocument({ silent: true });
+    setValue(DEFAULT_DOCUMENT);
+  }
+
   ensureMath(editor.getValue());
   updateCounts(editor.getValue());
   updateCursor(editor.getPosition());

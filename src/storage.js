@@ -22,7 +22,11 @@ const MIGRATED_FLAG = `${PREFIX}_migrated`;
  */
 export const BOOT_THEME_KEY = `${PREFIX}theme`;
 
+const DOC_PREFIX = `${PREFIX}doc:`;
+
 const KEYS = {
+  docs: 'docs',
+  activeDoc: 'active_doc',
   content: 'last_state',
   scrollSync: 'scroll_bar_settings',
   theme: 'theme_settings',
@@ -135,6 +139,72 @@ let toBoolean = (value, fallback = false) => {
 
 export const loadContent = () => read(KEYS.content);
 export const saveContent = (value) => write(KEYS.content, value);
+
+/*
+ * Documents.
+ *
+ * `markbeam:docs` holds the index — id, title and last-edited stamp — and each document's
+ * text lives under its own `markbeam:doc:<id>` key. One key per document rather than a
+ * single blob: a blob would rewrite every document on every keystroke, and one oversized
+ * document would take all the others down with it when quota is reached.
+ */
+export const loadDocIndex = () => {
+  const value = read(KEYS.docs);
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.filter((entry) => entry && typeof entry.id === 'string');
+};
+
+export const saveDocIndex = (entries) => write(KEYS.docs, entries);
+
+export const loadActiveDocId = () => {
+  const value = read(KEYS.activeDoc);
+  return typeof value === 'string' ? value : null;
+};
+export const saveActiveDocId = (id) => write(KEYS.activeDoc, id);
+
+export const loadDoc = (id) => {
+  const value = read(`doc:${id}`);
+  return typeof value === 'string' ? value : '';
+};
+export const saveDoc = (id, text) => write(`doc:${id}`, text);
+
+export const deleteDoc = (id) => {
+  try {
+    localStorage.removeItem(DOC_PREFIX + id);
+  } catch (error) {
+    // storage unavailable; the index update below is what actually matters
+  }
+};
+
+/** Ids only need to be unique within one browser profile. */
+export const newDocId = () =>
+  `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+/*
+ * Adopt the pre-multi-document profile.
+ *
+ * Runs after `migrateLegacyStorage()`, so whatever that recovered is what gets adopted.
+ * The old `last_state` and `doc_title` keys are deliberately left in place: they cost
+ * almost nothing, and they mean a rollback to an earlier build still finds the user's
+ * document instead of an empty editor.
+ */
+export const migrateSingleDocument = () => {
+  if (loadDocIndex()) {
+    return null;
+  }
+
+  const id = newDocId();
+  const text = read(KEYS.content);
+  const title = read(KEYS.docTitle) || 'Untitled';
+
+  saveDoc(id, typeof text === 'string' ? text : '');
+  saveDocIndex([{ id, title, updatedAt: Date.now() }]);
+  saveActiveDocId(id);
+
+  return id;
+};
 
 export const loadScrollSync = () => toBoolean(read(KEYS.scrollSync), false);
 export const saveScrollSync = (value) => write(KEYS.scrollSync, value);
