@@ -1,10 +1,9 @@
-import mermaid from 'mermaid';
 import { getTheme } from '../theme.js';
 
 /*
  * Mermaid rendering.
  *
- * Two things in here are load-bearing and were both bugs at some point:
+ * Three things in here are load-bearing and were all bugs at some point:
  *
  * 1. `suppressErrorRendering`. On a parse error `mermaid.render` throws *before* it
  *    reaches its own `removeTempElements()`, stranding the temporary `d<renderId>`
@@ -12,6 +11,10 @@ import { getTheme } from '../theme.js';
  *    so those containers stacked up until they covered the page.
  * 2. Deterministic render ids. A `Date.now()`-based id produced a fresh id every
  *    keystroke, which defeated Mermaid's own id-matching cleanup of stale containers.
+ * 3. The dependency is loaded on demand. Mermaid is the largest thing this app can pull
+ *    in, and it used to be a static import — which put it in the entry chunk, so every
+ *    visitor downloaded it before first paint whether their document contained a diagram
+ *    or not. It is now lazy, like KaTeX and the emoji table.
  */
 
 const RENDER_DEBOUNCE_MS = 150;
@@ -24,6 +27,34 @@ const listeners = new Set();
 export const onMermaidRender = (listener) => {
   listeners.add(listener);
   return () => listeners.delete(listener);
+};
+
+/*
+ * The dependency itself, fetched the first time a diagram actually needs drawing.
+ *
+ * Idempotent and cached in a promise, matching `loadMath()` in `../markdown/math.js`: many
+ * render passes can arrive while the chunk is in flight and they all await the same one. A
+ * blocked or offline chunk resolves false rather than throwing, which leaves the diagram
+ * source visible in the preview — the same soft failure math already has.
+ */
+let mermaid = null;
+let loading = null;
+
+let loadMermaid = () => {
+  if (mermaid) {
+    return Promise.resolve(true);
+  }
+
+  if (!loading) {
+    loading = import('mermaid')
+      .then((module) => {
+        mermaid = module.default;
+        return true;
+      })
+      .catch(() => false);
+  }
+
+  return loading;
 };
 
 let mermaidTheme = (resolved) => (resolved === 'dark' ? 'dark' : 'default');
@@ -57,9 +88,33 @@ export const renderMermaidNow = async (theme = mermaidTheme(getTheme())) => {
   }
 
   const version = ++renderVersion;
+  const elements = Array.from(outputElement.querySelectorAll('.mermaid'));
+
+  /*
+   * The element query gates the import, and that ordering is the whole point. `configure()`
+   * used to run above this line, which touched the module and so forced the dependency to
+   * load on every render pass — including the overwhelmingly common one where the document
+   * contains no diagram at all.
+   *
+   * Readiness is still published here, because a document with nothing to prepare is ready
+   * by definition and something may be waiting on the attribute.
+   */
+  if (elements.length === 0) {
+    listeners.forEach((listener) => listener());
+    markReadiness();
+    return;
+  }
+
+  if (!(await loadMermaid())) {
+    return;
+  }
+  // A newer pass may have started while the chunk was in flight.
+  if (version !== renderVersion) {
+    return;
+  }
+
   configure(theme);
 
-  const elements = Array.from(outputElement.querySelectorAll('.mermaid'));
   for (const [index, element] of elements.entries()) {
     // A newer pass started while we were awaiting — abandon this one.
     if (version !== renderVersion) {
@@ -168,8 +223,15 @@ let prerenderLightDiagrams = async () => {
     return;
   }
 
+  // Reached only after a successful screen render, so this is normally already resolved.
+  if (!(await loadMermaid())) {
+    markReadiness();
+    return;
+  }
+
   const version = renderVersion;
   configure('default');
+
 
   try {
     for (const [index, source] of pending.entries()) {

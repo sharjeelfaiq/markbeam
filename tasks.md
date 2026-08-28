@@ -31,7 +31,7 @@ above P1.*
 
 ## P3 — Housekeeping
 
-*Empty — T13, T14, T15 and T17 are all done. New housekeeping goes here.*
+*Empty — T13, T14, T15, T17 and T26 are all done. New housekeeping goes here.*
 
 ---
 
@@ -47,6 +47,107 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T26 · Mermaid sat in the entry chunk, so every visitor paid for it — 2026-08-28
+
+Found while inspecting the build, not reported. The single entry chunk was **700,663 bytes**
+uncompressed and contained Mermaid core — fetched before first paint by every visitor,
+including the majority whose document holds no diagram.
+
+Out of step with the rest of the app: KaTeX (`src/markdown/math.js`) and the emoji table
+(`src/markdown/emoji.js`) were already lazy behind the pattern this needed, and `CLAUDE.md`
+lists the deliberate loading choices without ever claiming Mermaid was eager. An oversight
+rather than a decision.
+
+**Root cause was an ordering, not the import.** `renderMermaidNow()` called
+`configure(theme)` *before* querying for `.mermaid` elements. That call touches the module,
+so every render pass — including the common one on a document with no diagram — forced the
+dependency to load. Moving the element query above it, and returning early when there is
+nothing to draw, is what makes a diagram-free document free.
+
+`loadMermaid()` then mirrors `loadMath()`: idempotent, promise-cached so concurrent passes
+await the same import, resolving false on a blocked chunk so the diagram source stays
+visible instead of throwing.
+
+**Measured**
+
+| | Entry chunk |
+|---|---|
+| Before | 700,663 bytes |
+| After | 109,058 bytes |
+| Delta | **−591,605 bytes, 84% smaller** |
+
+Gone rather than renamed: `flowchart`, `cytoscape` and `sequenceDiagram` are all absent from
+the entry. The bare string `mermaid` remains only as the dynamic-import specifier and the
+wrapper's own identifiers; the engine moved to a separate 580 KB `mermaid.core` chunk.
+
+**Invariants held.** The version guard is re-checked after the new await — the import is now
+one of the awaits that rule covers. Deterministic ids, the `dataset.mermaidSource` stash and
+`suppressErrorRendering` are untouched. `applyPrintDiagrams()` and `restoreScreenDiagrams()`
+stay synchronous: they are called from `beforeprint`, which cannot await, and making either
+async would silently reintroduce the T12 dark-diagram bug.
+
+**Trade-off, stated rather than hidden.** A document *with* a diagram now waits an extra
+round trip. The local measurement does not quantify it honestly — time-to-diagram was 654 ms
+first and ~370 ms warm, but `transferSize` was 0, so the dev server was serving the
+dependency from cache. Structurally: diagram-free documents save 592 KB; diagram-bearing ones
+fetch the same bytes in two requests instead of one. The same trade-off KaTeX already makes.
+
+**The second check proves nothing on its own.** "Typing a diagram loads the dependency"
+passed before *and* after, because the dependency always loaded before. It is a regression
+guard. Only the first check is evidence:
+
+```
+✗ a document with no diagram never fetches the Mermaid dependency
+    — 0 diagrams, requested: ["/node_modules/.vite/deps/mermaid.js?v=6c23f982"]
+
+✓ a document with no diagram never fetches the Mermaid dependency
+    — 0 diagrams, requested: nothing
+```
+
+The welcome document is the one first-load case that must still fetch the chunk, since it
+contains a fence and is the default for every new profile. Covered by the suite's first
+check, which boots the app fresh and asserts `1 svg`.
+
+**Verify vs reference**
+
+**No functional difference** — diagrams render exactly as before. This is a load-path change,
+so the evidence is in the network panel, not on screen.
+
+*On ours* — http://localhost:5173. Open devtools → **Network**, filter `mermaid`, then load a
+document with **no** diagram (the palette's *Clear document* is enough). Nothing matching
+`deps/mermaid` is requested. Type a fence:
+
+````
+```mermaid
+graph TD
+  A-->B
+```
+````
+
+and it is fetched at that moment, then the diagram renders. Console equivalent, which also
+sees cached responses:
+
+```js
+performance.getEntriesByType('resource')
+  .map((e) => e.name)
+  .filter((n) => /mermaid/i.test(n) && !n.includes('/src/'))
+```
+
+Empty on a diagram-free document. Note `/src/mermaid/index.js` is our own wrapper and always
+loads — it is not the payload, hence the filter.
+
+*On the reference* — https://markdownlivepreview.com does not support Mermaid at all, so
+there is nothing to compare: a Mermaid fence renders there as a plain code block. The
+comparison that does hold is against Markbeam's own previous build, which is the measurement
+above.
+
+**Note for later.** The build ships both `html2canvas-pro` (248 KB) and `html2canvas`
+(200 KB); `CLAUDE.md` is emphatic that the `-pro` fork is the dependency and the original
+must not return. jspdf appears to pull it in optionally. Both are lazy export-path chunks so
+nothing on first paint pays for it, but 200 KB of it is probably dead. Worth its own task.
+
+---
 
 ### [x] T22 · Autosave history — 2026-08-28
 

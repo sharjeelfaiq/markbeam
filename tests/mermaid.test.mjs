@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { seedDocument, withPage, sleep } from './lib.mjs';
 
 /*
  * Regression cover for the Mermaid error-container leak.
@@ -108,6 +108,60 @@ export const suite = {
         name: 'recovers after the diagram is fixed',
         pass: recovered === 1 && leftover === 0,
         detail: `${recovered} svg, ${leftover} errors`
+      });
+
+      /*
+       * Mermaid is the largest thing the app can load, and most documents contain no
+       * diagram at all. It used to be a static import, which put it in the entry chunk —
+       * 700,663 bytes fetched before first paint whether or not it would ever be used.
+       *
+       * Read from resource timing rather than a request listener: a listener would have to
+       * be attached before navigation, which `withPage` owns, and resource entries are
+       * recorded even when the response comes from cache — which a reload otherwise hides.
+       *
+       * `/src/mermaid/index.js` is our own module and always loads; it is the wrapper, not
+       * the dependency. Only `/node_modules/.vite/deps/mermaid.js` is the payload.
+       */
+      const mermaidRequests = (target) =>
+        target.evaluate(() =>
+          performance
+            .getEntriesByType('resource')
+            .map((entry) => entry.name)
+            .filter((name) => /mermaid/i.test(name) && !name.includes('/src/'))
+            .map((name) => {
+              const url = new URL(name);
+              return url.pathname + url.search;
+            })
+        );
+
+      await seedDocument(page, '# No diagram here\n\nJust prose, no fences at all.', 'Plain');
+      await page.reload({ waitUntil: 'networkidle2' });
+      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
+        timeout: 30000
+      });
+      await sleep(2500);
+
+      const withoutDiagram = await mermaidRequests(page);
+      const diagramsPresent = await page.$$eval('#output .mermaid', (els) => els.length);
+      checks.push({
+        name: 'a document with no diagram never fetches the Mermaid dependency',
+        pass: withoutDiagram.length === 0 && diagramsPresent === 0,
+        detail: `${diagramsPresent} diagrams, requested: ${
+          withoutDiagram.length === 0 ? 'nothing' : JSON.stringify(withoutDiagram)
+        }`
+      });
+
+      // …and it must still load the moment a diagram appears, or this is a regression.
+      await clearEditor(page);
+      await type(page, '```mermaid\ngraph TD\n  A-->B\n');
+      await sleep(2000);
+
+      const afterDiagram = await mermaidRequests(page);
+      const lateSvgs = await page.$$eval('#output .mermaid svg', (els) => els.length);
+      checks.push({
+        name: 'typing a diagram loads the dependency on demand and renders it',
+        pass: afterDiagram.length > 0 && lateSvgs === 1,
+        detail: `${lateSvgs} svg, requested: ${JSON.stringify(afterDiagram)}`
       });
 
       checks.push({
