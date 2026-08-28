@@ -232,8 +232,12 @@ let decorateClone = (clonedDoc) => {
   clonedDoc.head.appendChild(style);
 };
 
-/** "My Notes!" -> "my-notes.pdf" */
-export const filenameFromTitle = (title) => {
+/**
+ * "My Notes!" -> "my-notes.pdf", or any other extension.
+ *
+ * Shared by every export so one document produces one consistent basename across formats.
+ */
+export const filenameFromTitle = (title, extension = 'pdf') => {
   const slug = String(title || '')
     .trim()
     .toLowerCase()
@@ -242,7 +246,7 @@ export const filenameFromTitle = (title) => {
     .replace(/^-+|-+$/g, '')
     .slice(0, 64);
 
-  return `${slug || 'markbeam-document'}.pdf`;
+  return `${slug || 'markbeam-document'}.${extension}`;
 };
 
 export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}) => {

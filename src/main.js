@@ -14,7 +14,9 @@ import { renderMarkdown } from './markdown/index.js';
 import { loadEmoji } from './markdown/emoji.js';
 import { hasMath, loadMath } from './markdown/math.js';
 import { onMermaidRender, renderMermaidForTheme, scheduleMermaidRender } from './mermaid/index.js';
-import { exportPreviewToPdf } from './export/pdf.js';
+import { exportPreviewToPdf, filenameFromTitle } from './export/pdf.js';
+import { buildStandaloneHtml, buildWordDocument } from './export/document.js';
+import { downloadText } from './export/download.js';
 import { copyPreviewAsHtml } from './export/html.js';
 import { getPreference, cyclePreference, initTheme, onThemeChange } from './theme.js';
 import {
@@ -392,6 +394,39 @@ const init = () => {
     }
   };
 
+  /*
+   * File exports. All three share `filenameFromTitle`, so one document produces one
+   * basename across every format.
+   *
+   * The Word file is `.doc` — HTML with Word's MIME type — not `.docx`. Real OOXML would
+   * cost a 4.65 MB dependency and hand-mapping the markdown AST, losing Mermaid and KaTeX
+   * on the way. The label says `.doc` so the name never overstates what the file is.
+   */
+  let exportMarkdown = () => {
+    downloadText(filenameFromTitle(docTitle, 'md'), editor.getValue(), 'text/markdown;charset=utf-8');
+    toast('Markdown downloaded');
+  };
+
+  // Async because both re-render Mermaid light first, so a diagram exported from dark
+  // mode does not arrive as black boxes on a white page.
+  let exportHtml = async () => {
+    downloadText(
+      filenameFromTitle(docTitle, 'html'),
+      await buildStandaloneHtml(outputElement, docTitle),
+      'text/html;charset=utf-8'
+    );
+    toast('HTML downloaded');
+  };
+
+  let exportWord = async () => {
+    downloadText(
+      filenameFromTitle(docTitle, 'doc'),
+      await buildWordDocument(outputElement, docTitle),
+      'application/msword'
+    );
+    toast('Word document downloaded');
+  };
+
   let exportPdf = async () => {
     if (exporting) {
       return;
@@ -552,6 +587,9 @@ const init = () => {
    */
   initPalette([
     { title: 'Export as PDF', keys: 'mod+s', run: exportPdf },
+    { title: 'Export as HTML', run: exportHtml },
+    { title: 'Export as Word (.doc)', run: exportWord },
+    { title: 'Export as Markdown', run: exportMarkdown },
     { title: 'Editor only', keys: 'mod+1', run: () => setViewMode('editor') },
     { title: 'Split view', keys: 'mod+2', run: () => setViewMode('split') },
     { title: 'Preview only', keys: 'mod+3', run: () => setViewMode('preview') },

@@ -24,12 +24,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Product
 
-### [ ] T10 · Export HTML / DOCX / `.md` (#99, #57)
-
-**Done when:** each format downloads and opens correctly, named from the document title.
-
----
-
 ### [ ] T11 · Shareable URL links
 
 **Done when:** a link round-trips a document without a server.
@@ -71,6 +65,107 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T10 · Export HTML / Word / `.md` — 2026-08-28 (#99, #57)
+
+**The task said DOCX; this ships `.doc`, and that deviation is deliberate.** A real OOXML
+file would mean the `docx` package — 4.65 MB unpacked — plus hand-mapping the markdown AST
+to its object model, with Mermaid and KaTeX dropped or rasterised on the way: larger than
+the rest of T10 combined. Agreed with the user to ship a Word-compatible `.doc` instead:
+HTML served with Word's MIME type, which Word, Pages and Google Docs all open with headings,
+tables and styling intact. **It is labelled `.doc` in the palette and in the code, never
+`.docx`** — the file would eventually contradict the name.
+
+**Fix:** `src/export/download.js` (`downloadBlob` / `downloadText`, the first shared
+download path — PDF had used jsPDF's own `save()`) and `src/export/document.js`
+(`buildStandaloneHtml`, `buildWordDocument`). `filenameFromTitle` in `pdf.js` now takes an
+extension, so one document yields one basename across all four formats. Three palette
+commands; no new toolbar controls, since the row is full and PDF already holds the export
+slot.
+
+`document.js` is a **sibling of `html.js`, not a reuse.** T4's clipboard HTML inlines table
+styles because a paste target strips stylesheets; a file can carry its own `<style>`, which
+is both simpler and covers every element rather than only tables. The styles are read back
+out of `document.styleSheets` rather than duplicated, so an export cannot drift from what
+the preview actually looks like.
+
+**Measured**, seven checks, all failing against HEAD:
+
+```
+BASELINE  ✗ palette offers HTML, Word and Markdown      all three missing
+          ✗ Markdown carries the editor source exactly  nothing downloaded
+          ✗ HTML is standalone with its own styles      nothing downloaded
+          ✗ Mermaid survives into the HTML export       svg=false
+          ✗ Word uses the Word MIME type and .doc       nothing downloaded
+          ✗ filenames are the slugified title           {}
+          ✗ renaming renames the exported file          nothing downloaded
+FIXED     ✓ Export as HTML | Export as Word (.doc) | Export as Markdown
+          ✓ text/markdown, 238B, "# Export fixture…"
+          ✓ text/html, doctype=true, style=true, mb-md=true
+          ✓ svg=true, flowchart=true
+          ✓ type "application/msword", name "my-export-doc.doc"
+          ✓ {"md":"my-export-doc.md","html":"my-export-doc.html","word":"my-export-doc.doc"}
+          ✓ "second-name.md"
+```
+
+### Two defects the suite passed straight over
+
+Both were caught only by writing the exported file to disk and opening it, and eight green
+checks sat happily on top of each:
+
+1. **Mermaid exported black.** It bakes theme colours into the SVG it emits, so a diagram
+   exported from dark mode arrived as black boxes on a white page. `pdf.js` already had this
+   problem and the same cure: re-render `'default'` before taking the markup, restore after.
+   That is what makes the two builders async.
+2. **KaTeX math rendered twice** — once laid out and once as raw MathML text beside it
+   (`Inline x² + 1x2 + 1`). KaTeX's own stylesheet carries the rule that hides the MathML
+   layer, and `collectStyles()` was only matching sheets containing `--beam:` or `.mb-md`,
+   so it was excluded. Now matched on `.katex` as well.
+
+**Looked at, not just asserted.** Exported a document with a table, code block, Mermaid
+diagram, inline and display math, an alert, a highlight and an emoji, then opened it with no
+stylesheet but its own: 5 headings, `1px` table borders, header shaded
+`rgb(238, 241, 245)`, light diagram, math rendered once, callout and mark intact, white
+background. Palette checked at 1400px and 375px — 14 commands, list scrolls, sheet fully on
+screen in both.
+
+**Known limitation, measured:** opening the exported HTML logs `ERR_FILE_NOT_FOUND` for
+KaTeX's font files, which its CSS references by relative URL. Math lays out correctly but in
+fallback glyphs, and the `@fontsource` faces behave the same way. Embedding them as data
+URIs would fix it at a large size cost; adding KaTeX's CSS alone already took the file from
+30 KB to 62 KB.
+
+**Not claimed:** opening the `.doc` in Word. No test here reaches Word, exactly as with T4's
+Outlook paste — confirm one by hand.
+
+**Verify vs reference:** measured on https://markdownlivepreview.com:
+
+```
+controls              ["Markdown Live Preview", "Reset", "Copy", "Export PDF"]
+a[download] elements  []
+document title field  false
+```
+
+Both sites export PDF. Only ours writes HTML, Word or Markdown files — and only ours can
+name them, because the reference has **no document title field at all**, so it has nothing
+to name a file from.
+
+On ours, set the title (click it in the toolbar), then press `Ctrl+K` and pick **Export as
+HTML**, **Export as Word (.doc)** or **Export as Markdown**. The download is named from the
+slugified title: a document called `My Export Doc!` produces `my-export-doc.html`. Rename
+it and export again — the filename follows.
+
+The HTML file is self-contained: open it with no network and no stylesheet and it still
+renders with borders, shading, a light Mermaid diagram and laid-out math.
+
+To measure rather than eyeball, run this in the console on each site:
+
+```js
+[...document.querySelectorAll('button, a')].map((e) => e.textContent.trim()).filter(Boolean)
+```
+
+The reference lists `Reset`, `Copy` and `Export PDF`. Ours additionally offers the three
+export commands in `Ctrl+K`.
 
 ### [x] T9 · Multiple documents — 2026-08-27
 
