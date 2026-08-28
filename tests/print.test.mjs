@@ -192,6 +192,22 @@ export const suite = {
        * the media query without ever announcing a print job.
        */
       await page.emulateMediaType(null);
+      /*
+       * Wait for the restore instead of assuming it has happened.
+       *
+       * `printedPages()` above renders a PDF *while* print media is emulated, so its
+       * `afterprint` hits `leavePrint()`'s guard — `matchMedia('print')` still matches, and
+       * the theme deliberately stays light. The restore therefore rides on the media-query
+       * change handler fired by the line above, which is a round-trip later than that call
+       * resolves. Reading immediately is a race this machine wins and CI loses: it measured
+       * `themeBeforePrinting` as light and failed two checks that describe correct
+       * behaviour. Waiting on the exact state about to be measured makes it an assertion,
+       * and if the restore never comes that is a real bug and this fails loudly.
+       */
+      await page.waitForFunction(
+        () => document.documentElement.getAttribute('data-theme') === 'dark',
+        { timeout: 5000 }
+      );
       await page.evaluate(() => {
         window.__printSample = null;
         const luminance = (value) => {
@@ -229,9 +245,25 @@ export const suite = {
         paneBgLuminance: null
       };
 
-      const themeAfterPrinting = await page.evaluate(
-        () => document.documentElement.getAttribute('data-theme')
-      );
+      /*
+       * Bounded wait, not a bare read. The restore runs in an `afterprint` handler during
+       * the render above, and `page.pdf()` resolving does not guarantee it has been
+       * observed here. A wait that expires still reports whatever the theme actually is, so
+       * a genuine failure to restore fails on its merits rather than timing out.
+       */
+      let themeAfterPrinting;
+      try {
+        await page.waitForFunction(
+          (expected) => document.documentElement.getAttribute('data-theme') === expected,
+          { timeout: 5000 },
+          themeBeforePrinting
+        );
+        themeAfterPrinting = themeBeforePrinting;
+      } catch (error) {
+        themeAfterPrinting = await page.evaluate(
+          () => document.documentElement.getAttribute('data-theme')
+        );
+      }
       checks.push({
         name: 'printed text is dark on a light background, even from the dark theme',
         pass:

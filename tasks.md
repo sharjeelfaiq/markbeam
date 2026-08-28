@@ -12,7 +12,8 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T1, T2, T3, T4, T18, T19, T20, T21 and T24 are all done. New bugs go here, above P1.*
+*Empty — T1, T2, T3, T4, T18, T19, T20, T21, T24 and T25 are all done. New bugs go here,
+above P1.*
 
 ---
 
@@ -53,6 +54,82 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T25 · The print suite reads the theme before the page has left print media — 2026-08-28
+
+CI failed on `a4bd1f5` — past T24's timeout, then two checks further down, again only on CI:
+
+```
+✗ printed text is dark on a light background, even from the dark theme
+  — app theme light, at print time light, text rgb(13, 18, 25) (17)
+✗ the screen theme is restored after printing  — light -> dark
+```
+
+Read the details, not the names: *at print time light* and *after printing dark* are both
+the required behaviour. T24's theme pin worked. What failed is `themeBeforePrinting`, which
+read `light` when the app should already have been back on `dark`.
+
+**Done when**
+
+- [x] The suite waits for the restore it is about to measure, rather than assuming it.
+- [x] Every `emulateMediaType(null)` whose following read depends on the restore is audited.
+- [ ] CI is green. A local run cannot prove this one — that gap is what let T12 and T24 through.
+
+**Root cause.** `printedPages()` renders a PDF *while* print media is emulated, so its
+`afterprint` hits the guard in `leavePrint()` (`src/theme.js`) — `matchMedia('print')` still
+matches, and the theme deliberately stays light. That guard is correct and must stay: it is
+what stops a PDF render inside an already-printing context from dropping the page back to
+dark mid-print.
+
+The restore therefore rides on the media-query change handler fired by the *next*
+`emulateMediaType(null)`, which lands a round-trip after that call resolves. The suite read
+the theme immediately, with no wait.
+
+**Not reproducible locally.** 12 consecutive attempts driving the same sequence read `dark`
+every time — this machine wins the race, CI loses it:
+
+```json
+{"reads":["dark","dark","dark","dark","dark","dark","dark","dark","dark","dark","dark","dark"],"light":0}
+```
+
+So there is no honest local red for this one. The fix converts an ordering assumption into
+an assertion, and CI is the gate.
+
+**Audit.** Three `emulateMediaType(null)` sites. Only the one before the colour sample has a
+following read that depends on the restore. The other two are followed by view-mode clicks
+and geometry reads, which are theme-independent, and `enterPrint()` is idempotent by design,
+so an unfinished leave is harmless there. Left alone rather than padded with waits that
+would assert nothing.
+
+**Local evidence after the fix**
+
+```
+✓ printed text is dark on a light background, even from the dark theme
+  — app theme dark, at print time light, text rgb(13, 18, 25) (17)
+✓ the screen theme is restored after printing  — dark -> dark
+```
+
+**Verify vs reference**
+
+**No user-visible difference.** This is a test-timing fix; printing behaved correctly the
+whole time, on both the local and the CI reading. Inventing a user-facing symptom would be
+dishonest.
+
+*On ours* — http://localhost:5173 in the dark theme, Ctrl+P, then cancel. The page is light
+in the print preview and dark again afterwards. That was already true before this change;
+what changed is that the suite now waits for the restore instead of assuming it has landed.
+
+*On the reference* — https://markdownlivepreview.com has no print stylesheet and no theme
+switch during printing, so there is nothing to compare. T12's comparison stands unchanged.
+
+**What this cost, and what changed because of it.** Three consecutive commits shipped green
+locally and failed in CI, each on an environment difference rather than a product bug: the
+host's colour scheme (T24), a readiness signal never written on one exit path (T24), and CDP
+emulation timing (this one). `CLAUDE.md` now carries all three under Testing as a third
+hard-won rule — **a green local run does not predict CI** — so the next change starts from
+that knowledge instead of rediscovering it.
+
+---
 
 ### [x] T24 · Print readiness never settles when the host prefers a light theme — 2026-08-28
 

@@ -232,7 +232,7 @@ what proves the CSS actually binds rather than the class names merely being pres
 Suites live in `tests/`, each exporting `{ name, run() }` returning an array of
 `{ name, pass, detail }`. `tests/run.mjs` aggregates them.
 
-Two rules learned the hard way here:
+Three rules learned the hard way here:
 
 - **Run a new regression test against the unfixed code first and watch it fail.** A test
   that passes before *and* after proves nothing. One mermaid test did exactly that: its
@@ -240,6 +240,22 @@ Two rules learned the hard way here:
   fired and the bug never reproduced.
 - **Never edit source while a browser test is running.** Vite hot-reloads mid-run and
   produces results that look real but are not.
+- **A green local run does not predict CI.** Three consecutive commits went out green here
+  and failed in CI, each on an environment difference rather than a product bug:
+
+  1. The host's **colour scheme**. The default theme preference is `system`; a dark
+     workstation resolves dark and a headless Linux runner resolves light, so a suite that
+     never pins the theme measures a different app in each place. Pin it — write
+     `markbeam:theme_settings` before the reload, as `tests/print.test.mjs` does.
+  2. **Timing around CDP emulation.** `page.emulateMediaType(null)` resolving does not mean
+     the page's `matchMedia` listeners have run. Anything depending on that must
+     `waitForFunction` on the state it is about to measure, never `sleep`.
+  3. **Readiness signals that are never written.** An early return that skips the code
+     setting a signal turns any wait on it into a hang. Mirror readiness onto the DOM and
+     write it on *every* exit path.
+
+  Where a check cannot be proved locally, say so and treat the CI run as the gate rather
+  than reporting the fix as verified.
 
 ## Deployment
 
