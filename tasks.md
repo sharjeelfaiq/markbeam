@@ -25,7 +25,33 @@ above P1.*
 
 ## P2 — Product
 
-*Empty — T22 was the last one. New product work goes here.*
+### [ ] T28 · A crawler sees no content, because the page is an app shell
+
+**Why:** the served HTML has no `<h1>` and no body prose. Every visible word arrives after JS
+renders the welcome document into `#output`. Google executes JS, but thin pages rank badly
+regardless.
+
+**The two obvious shortcuts are both wrong.** Hidden or off-screen keyword text is cloaking
+and risks a manual penalty — strictly worse than doing nothing. Bolting a visible marketing
+section into a `height: 100dvh; overflow: hidden` shell breaks the layout, and
+`tests/ui.test.mjs` already checks 375px for overflow.
+
+**Done when:** the initial `#output` content is real HTML in the served markup — a pre-rendered
+form of the actual welcome document that the editor takes over on boot — and the app looks and
+behaves exactly as it does now at 1400px and 375px in both themes. No hidden text. If a
+separate landing page turns out to be the better structure, that case is argued rather than
+assumed.
+
+---
+
+### [ ] T29 · No robots.txt and no sitemap
+
+**Why:** neither exists. Nothing tells a crawler what to index or where the sitemap is.
+Smallest of the three, and it depends on T27 for the base URL.
+
+**Done when:** `public/robots.txt` and `public/sitemap.xml` are served from the root of the
+build, the sitemap uses the single base URL from T27, and a check proves both are reachable
+after a build rather than assuming Vite copied them.
 
 ---
 
@@ -47,6 +73,102 @@ to contribute back to.
 ---
 
 ## Completed
+
+### [x] T27 · Title and metadata matched no search anyone performs — 2026-08-28
+
+**Why:** `<title>` was `Markbeam`, a brand name nobody queries, and the served page carried no
+canonical, no Open Graph or Twitter tags and no structured data. Every share in Slack or on
+social rendered as a bare link. Cheapest real gain on the SEO list.
+
+Full brief, with the verified starting state and the constraints: `docs/seo-brief.md`.
+
+**What shipped**
+
+- `<title>` → *Markbeam — Online Markdown Editor with Live Preview* (51 chars), and a
+  151-character description that reads as a sentence rather than a keyword list.
+- `<link rel="canonical">`, 9 Open Graph tags, 4 Twitter tags (`summary_large_image`).
+- `SoftwareApplication` JSON-LD, with **no `aggregateRating` and no `review`** — there are no
+  ratings, and inventing them is both a lie and a structured-data policy violation.
+- `public/og.png` — 1200×630, 130 KB. A **real screenshot** of the app in dark split view on
+  the welcome document, not a mockup: what the card shows is what the click delivers.
+
+**Verified on the built output, not the source.** Vite transforms `index.html`, so the source
+proves nothing:
+
+```
+BUILT index.html — 14,707 bytes
+  title:      Markbeam — Online Markdown Editor with Live Preview
+  canonical:  https://markbeam.vercel.app/
+  og tags:    9   twitter: 4   ld+json: 1
+  JSON-LD valid: SoftwareApplication | free: true | fabricated ratings: false
+  theme script survives: true
+  og.png at build root: 132,868 bytes
+```
+
+**Where this departed from its own brief, and why.** The brief said to put the base URL in one
+place. Not possible as written, and the alternatives were worse:
+
+- `.env` is gitignored (`.gitignore:68`), so Vite's `%VITE_SITE_URL%` replacement would be
+  undefined in Vercel's build and would ship a **broken canonical**.
+- There is deliberately no `vite.config.*` (`CLAUDE.md`), so there is no `transformIndexHtml`
+  hook to hold it.
+- Runtime injection is out entirely: Slack, Twitter and iMessage scrapers do not execute
+  JavaScript, so anything a module adds is invisible to them.
+
+So the URL appears 6 times inside **one commented block**, with that reasoning recorded in the
+markup. One place to edit, even though the string repeats.
+
+**Two test defects, both mine, both caught by running it**
+
+1. The pre-paint-theme guard asserted our inline script was `head script[0]`. The dev server
+   injects `/@vite/client` ahead of it, so the check failed against working code. Rewritten to
+   assert position *relative to the app module*: `theme at 1, app at 3`.
+2. The JSON-LD keyword check read `ld.name || ld.description`, which short-circuits on
+   `"Markbeam"` — a string that never contains "markdown". It asserted nothing useful. Now
+   tests both fields joined.
+
+**Before and after**
+
+```
+✗ the title carries the words people search for      — "Markbeam" (8 chars)
+✗ a canonical URL is declared, absolute and https    — absent
+✗ Open Graph tags carry content…                     — title=null, type=null, url=null, image=null
+✗ the Twitter card is the large-image variant        — absent
+✗ the og:image actually loads and is 1200x630        — did not load
+✗ JSON-LD parses and describes a SoftwareApplication — absent
+```
+
+All six green afterwards. Two checks in the suite passed before *and* after — the description
+length guard and the theme-script guard — and are constraints, not evidence.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173, view source (not devtools' inspector, which shows the
+live DOM). The title, canonical, OG block and JSON-LD are all in the served markup. Paste the
+deployed URL into Slack and the card renders with the editor screenshot instead of a bare
+link. Console check for the structured data:
+
+```js
+JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent)
+```
+
+*On the reference* — https://markdownlivepreview.com has a title but no canonical, no Open
+Graph tags and no structured data, so a shared link there is also a bare link. Compare:
+
+```
+curl -s https://markdownlivepreview.com | grep -ciE 'property="og:|ld\+json'
+```
+
+**Still thin, by design of this task.** The homepage has no `<h1>` and no body prose in the
+served HTML — that is T28, deliberately not folded in here.
+
+**The ceiling remains the domain.** None of this outranks an established competitor while the
+site lives on a shared platform subdomain. Noted because the metadata work is easy to mistake
+for the whole job. Also worth knowing: the welcome document already links to
+`https://markbeam.app`, suggesting an intended domain — canonical points at the Vercel alias
+because a canonical must resolve.
+
+---
 
 ### [x] T26 · Mermaid sat in the entry chunk, so every visitor paid for it — 2026-08-28
 

@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="Markbeam is an online Markdown editor with live preview, Mermaid diagrams and PDF export.">
+    <title>Markbeam — Online Markdown Editor with Live Preview</title>
+    <meta name="description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, no signup, in your browser.">
     <meta name="color-scheme" content="dark light">
 
     <script>
@@ -37,12 +38,77 @@
       })();
     </script>
 
+    <!-- ===================================================================
+         Search and social metadata.
+
+         ONE PLACE TO CHANGE THE DOMAIN: every absolute URL below lives in
+         this block and nowhere else. When a custom domain replaces the
+         Vercel alias, replace `https://markbeam.vercel.app` here — six
+         occurrences, all within these tags — and nothing outside this block
+         needs touching.
+
+         Why the URL is repeated rather than held in a variable: social
+         scrapers (Slack, Twitter, iMessage) do not run JavaScript, so these
+         cannot be injected at runtime, and the two build-time routes are
+         both closed. `.env` is gitignored, so Vite's `%VITE_*%` HTML
+         replacement would be undefined in Vercel's build and would ship a
+         broken canonical; and this project deliberately has no
+         `vite.config.*` (see CLAUDE.md), so there is no transformIndexHtml
+         hook to put it in.
+         =================================================================== -->
+    <link rel="canonical" href="https://markbeam.vercel.app/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Markbeam">
+    <meta property="og:title" content="Markbeam — Online Markdown Editor with Live Preview">
+    <meta property="og:description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, in your browser.">
+    <meta property="og:url" content="https://markbeam.vercel.app/">
+    <meta property="og:image" content="https://markbeam.vercel.app/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="The Markbeam editor: Markdown source on the left, rendered output on the right.">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Markbeam — Online Markdown Editor with Live Preview">
+    <meta name="twitter:description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, in your browser.">
+    <meta name="twitter:image" content="https://markbeam.vercel.app/og.png">
+
+    <!-- Structured data. Deliberately no `aggregateRating` or `review`: there
+         are no ratings to report, and inventing them is both a lie and a
+         structured-data policy violation. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Markbeam",
+        "description": "An online Markdown editor with live preview, Mermaid diagrams, math rendering and export to PDF, HTML, Word and Markdown. Runs entirely in the browser.",
+        "url": "https://markbeam.vercel.app/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Live Markdown preview",
+          "Mermaid diagrams",
+          "LaTeX math rendering",
+          "Export to PDF, HTML, Word and Markdown",
+          "Shareable links",
+          "Autosave history",
+          "Works offline in the browser"
+        ]
+      }
+    </script>
+
     <!-- SVG first so the mark stays crisp on hidpi tabs; the PNG is the fallback for
          browsers that still do not take an SVG icon. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
     <script type="module" src="/src/main.js"></script>
-    <title>Markbeam</title>
   </head>
 
   <body data-view="split">
