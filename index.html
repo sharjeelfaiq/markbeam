@@ -101,6 +101,7 @@
           "Live Markdown preview",
           "Mermaid diagrams",
           "LaTeX math rendering",
+          "Paste or drop images, processed and stored locally",
           "Export to PDF, HTML, Word and Markdown",
           "Shareable links",
           "Autosave history",
@@ -269,6 +270,102 @@
 
     <main class="workspace" id="workspace">
       <section class="pane pane--editor" id="edit" aria-label="Markdown source">
+        <div
+          class="format-toolbar"
+          id="format-toolbar"
+          role="toolbar"
+          aria-label="Markdown formatting">
+          <div class="format-toolbar__rail">
+            <div class="format-toolbar__group">
+              <button
+                class="format-toolbar__button format-toolbar__heading"
+                type="button"
+                data-format="heading"
+                aria-label="Heading style"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-controls="format-heading-menu"
+                aria-pressed="false"
+                title="Heading style"
+                tabindex="0">
+                <span class="format-toolbar__heading-label" aria-hidden="true">¶</span>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m5.5 6.5 2.5 3 2.5-3"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="bold" aria-label="Bold" aria-pressed="false" title="Bold (Ctrl+B)" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 2.5h3.2a2.6 2.6 0 0 1 0 5.2H5Zm0 5.2h3.8a2.9 2.9 0 0 1 0 5.8H5Z"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="italic" aria-label="Italic" aria-pressed="false" title="Italic (Ctrl+I)" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 2.5h5M4 13.5h5M9.5 2.5l-3 11"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="strike" aria-label="Strikethrough" aria-pressed="false" title="Strikethrough" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M11.8 4.1C11 3 9.7 2.5 8.1 2.5c-2 0-3.4.9-3.4 2.3 0 .8.5 1.4 1.5 1.8M4.4 11.5c.9 1.3 2.2 2 4 2 2.1 0 3.5-1 3.5-2.5 0-.8-.4-1.4-1.3-1.8M2.2 8h11.6"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="code" aria-label="Inline code" aria-pressed="false" title="Inline code (Ctrl+E)" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m5.5 4-3 4 3 4M10.5 4l3 4-3 4M9 2.8 7 13.2"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="format-toolbar__group">
+              <button class="format-toolbar__button" type="button" data-format="bullet-list" aria-label="Bullet list" aria-pressed="false" title="Bullet list (Ctrl+Shift+L)" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+                  <circle cx="3" cy="4" r=".7" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r=".7" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r=".7" fill="currentColor" stroke="none"/>
+                  <path d="M6 4h7M6 8h7M6 12h7"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="ordered-list" aria-label="Ordered list" aria-pressed="false" title="Ordered list" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M6 4h7M6 8h7M6 12h7M2.3 3.1l.8-.6v3M2.1 8c.1-.8 1.8-.9 1.8.1 0 .6-1.6 1.2-1.8 2h2M2.1 12c.3-.8 1.8-.7 1.8.1 0 .5-.4.7-.9.7.6 0 1 .2 1 .7 0 .9-1.6 1-2 .2"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="task-list" aria-label="Task list" aria-pressed="false" title="Task list" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="2.2" width="3.2" height="3.2" rx=".5"/><path d="m2.7 3.8.8.8 1.5-2M7.5 3.8h6M2 8h3.2v3.2H2zM7.5 9.6h6M2 13.5h3.2M7.5 13.5h6"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="blockquote" aria-label="Blockquote" aria-pressed="false" title="Blockquote" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 3.2v9.6M6 5.2h7.5M6 8h6M6 10.8h7.5"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="format-toolbar__group">
+              <button class="format-toolbar__button" type="button" data-format="code-block" aria-label="Fenced code block" aria-pressed="false" title="Fenced code block" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="1.8" y="2.2" width="12.4" height="11.6" rx="1.5"/><path d="m6.3 6-2 2 2 2M9.7 6l2 2-2 2"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="table" aria-label="Insert table" title="Insert table" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="1.7" y="2.2" width="12.6" height="11.6" rx="1.2"/><path d="M1.7 6h12.6M1.7 9.9h12.6M6 2.2v11.6M10.2 2.2v11.6"/>
+                </svg>
+              </button>
+              <button class="format-toolbar__button" type="button" data-format="link" aria-label="Insert link" title="Insert link (Ctrl+Shift+K)" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m6.4 9.6 3.2-3.2M5.2 11.9l-1 .9a2.8 2.8 0 0 1-4-4l2.3-2.3a2.8 2.8 0 0 1 4 0M10.8 4.1l1-.9a2.8 2.8 0 0 1 4 4l-2.3 2.3a2.8 2.8 0 0 1-4 0"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="format-toolbar__group">
+              <button class="format-toolbar__button" type="button" data-format="image" aria-label="Insert local image" title="Insert local image — kept private in this browser" tabindex="-1">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="1.8" y="2.3" width="12.4" height="11.4" rx="1.4"/><circle cx="5.2" cy="5.7" r="1.2"/><path d="m2.2 11.8 3.5-3.4 2.4 2.2 1.7-1.6 4 3.7"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
         <div id="editor"></div>
       </section>
 
@@ -289,6 +386,15 @@
         </div>
       </section>
     </main>
+
+    <div class="format-heading-menu" id="format-heading-menu" role="menu" aria-label="Heading style" hidden>
+      <button type="button" role="menuitemradio" data-heading-level="1" aria-checked="false" title="Heading 1">Heading 1</button>
+      <button type="button" role="menuitemradio" data-heading-level="2" aria-checked="false" title="Heading 2">Heading 2</button>
+      <button type="button" role="menuitemradio" data-heading-level="3" aria-checked="false" title="Heading 3">Heading 3</button>
+      <button type="button" role="menuitemradio" data-heading-level="paragraph" aria-checked="true" title="Paragraph">Paragraph</button>
+    </div>
+
+    <div class="format-tooltip" id="format-tooltip" role="tooltip"></div>
 
     <footer class="statusbar">
       <span class="statusbar__item" id="status-words">0 words</span>
@@ -330,6 +436,13 @@
       multiple
       hidden>
 
+    <input
+      type="file"
+      id="image-input"
+      accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+      multiple
+      hidden>
+
     <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
     <dialog class="sheet" id="palette" aria-label="Command palette">
@@ -349,6 +462,11 @@
     <dialog class="sheet" id="docs" aria-label="Documents">
       <ul class="sheet__list" id="docs-list" aria-label="Open a document"></ul>
       <ul class="sheet__list sheet__list--actions" id="docs-actions" aria-label="Document actions"></ul>
+    </dialog>
+
+    <!-- The outline. Rebuilt each time it opens, because the document changes constantly. -->
+    <dialog class="sheet" id="outline" aria-label="Document outline">
+      <ul class="sheet__list" id="outline-list" aria-label="Jump to a heading"></ul>
     </dialog>
 
     <!-- Autosave history. Its own sheet rather than a third list in #docs: that one is

@@ -18,31 +18,11 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-### [ ] T35 · No document outline
-
-**Why:** navigating a long document means scrolling. Headings are already parsed and rendered;
-nothing surfaces them.
-
-**Done when:** a palette command opens an outline of the document's headings in the existing
-`sheet` pattern (`src/ui/documents.js` and `src/ui/history.js` are the shape to copy), and
-choosing one scrolls the preview to that heading.
+*Empty — T34, T35 and T39 are all done. New editor gaps go here.*
 
 ---
 
 ## P2 — Bigger bets, decide before building
-
-### [ ] T36 · Images cannot be added at all
-
-**Why:** pasting or dropping an image is table stakes elsewhere. Markbeam has no image path.
-
-**The constraint is real and needs a decision first.** With no server there are two options,
-and both cost something: base64 into `localStorage`, which collides with the quota
-`src/history.js` already sweeps against — a single screenshot can exceed the entire 512 KB
-history budget — or an external host, which breaks the "nothing is uploaded" promise that
-`/about` makes and that distinguishes us from StackEdit. Do not start this as a coding task
-until that trade is settled.
-
----
 
 ### [ ] T37 · No sync between devices
 
@@ -101,6 +81,115 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T39 · No accessible editor formatting toolbar — 2026-08-29
+
+**Renumbered from T38, which was already taken** by the completed CI `paths-ignore` task
+below. Two tasks sharing an id makes every later reference ambiguous, so the newer one moved.
+
+**Why:** formatting was reachable only by shortcut or command palette, and the formatting
+layer covered six operations. Nothing on screen showed that Markdown formatting existed.
+
+A 42px rail above the editor — four groups, thirteen controls — built on the expanded
+`src/editor/format.js` (+602 lines) and `src/ui/formatToolbar.js`.
+
+**Done when — each clause, with its evidence**
+
+| Clause | Evidence |
+|---|---|
+| Visible in Editor and Split | `{split:true, editor:true, preview:false}` |
+| Absent from Preview and print | the same check, plus an explicit assertion that print CSS excludes it |
+| Contained on mobile | at 375px the rail is `client 375 / scroll 526`, `overflow-x: auto`, controls stay 36px |
+| Accessible active state and tooltips | 13 controls each with a label and native `title`; one roving tab stop (`0,-1,-1,…`); a single floating tooltip, `role="tooltip"`, `aria-describedby` wired |
+| Palette parity | every added action present in the palette — 34 commands total |
+| One-step undo | *"a toolbar transformation reverses in one undo step"*, and a multi-image insert undoes as one edit |
+| Selection-safe edits | the Monaco range survives a pointer click and focus returns; line formatting excludes a selection ending at column 1 of the next line; a table cell escapes a pipe as `a \| b` |
+
+**Contrast, honestly.** Measured: dark 9.09 ordinary / 11.78 active, light 7.86 ordinary /
+**3.74 active**. That last number clears WCAG 1.4.11 for non-text UI (3:1), the rule that
+applies to icon buttons — but it is the only value in the set under 4.5:1. Worth knowing
+before anyone tints the active state further.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com has no formatting controls whatsoever.
+Bold means typing `**` yourself.
+
+*On ours* — http://localhost:5173: select a word and click **B**. It wraps in `**`. Click
+**B** again and the markers come off with the selection intact. Press Ctrl+Z once — the whole
+transformation reverses in a single step, not character by character. Switch to **Preview**
+(Ctrl+3) and the toolbar is gone; Ctrl+P and it is absent from the printed page too.
+
+---
+
+### [x] T35 · No document outline — 2026-08-29
+
+**Why:** navigating a long document meant scrolling. Headings were already parsed and
+rendered; nothing surfaced them.
+
+`src/ui/outline.js` (105 lines) reuses the `sheet` pattern from `src/ui/documents.js` and
+`src/ui/history.js` — same classes, same "owns no state, reports intent through callbacks"
+shape.
+
+**Measured:** choosing a heading moves the preview `scrollTop 0 -> 441` of 871 and lands the
+heading 12px from the pane top. Nesting is carried on the row (`levels: 1,2,3,2`) rather than
+flattened. From **Editor-only** view it reveals the preview first — `visible false -> true` —
+because scrolling a pane nobody can see looks like nothing happening. A document with no
+headings gets *"No headings in this document"*, not a blank sheet.
+
+**Verify vs reference**
+
+*On the reference* — no outline and no heading navigation. A long document is a scrollbar.
+
+*On ours* — Ctrl+K → **Document outline**. Rows are indented by level with `H1`/`H2`/`H3` on
+the right. Click one and the preview scrolls to it. Delete a heading and reopen — the list
+reflects the document as it is now, not as it was when the sheet last opened.
+
+---
+
+### [x] T36 · Images cannot be added at all — 2026-08-29
+
+**The trade this task was gated on, and how it resolved.** The entry said not to start
+coding until the decision was made, because there were two options and both cost something:
+
+- **base64 into `localStorage`** — collides with the quota `src/history.js` sweeps against; a
+  single screenshot can exceed the entire 512 KB history budget.
+- **an external host** — breaks the "nothing is uploaded" promise `public/about.html` makes,
+  which is much of what distinguishes Markbeam from StackEdit.
+
+**Local base64 won, and the privacy promise is why.** The quota objection was answered rather
+than accepted: images are re-encoded to WebP and the document is capped at 1 MiB by
+`MAX_DOCUMENT_BYTES` in `src/documentLimits.js`. That cap is what keeps the history sweep
+meaningful, and it is now recorded in `CLAUDE.md` under Persistence — raising it silently
+would break history rather than images.
+
+**Measured:** a 12,712,239-byte 2400×1800 image resizes to **304,950 bytes at 882×662** in
+the browser. Rendering costs **0 network image requests**. An insert that would carry the
+document past the cap is refused with *"Those images would make this document larger than the
+1 MiB browser limit"* at 1,048,560 characters.
+
+**Refusals name the reason**, which matters because a rejected paste is otherwise
+indistinguishable from a broken app: SVG, animated GIF (refused rather than silently losing
+the animation), AVIF by name, a mixed image-plus-Markdown drop refused as a whole, and a
+storage-capacity failure caught before anything is written.
+
+**Verify vs reference**
+
+*On the reference* — paste a screenshot into https://markdownlivepreview.com. Nothing
+happens; there is no image path at all.
+
+*On ours* — paste or drop a PNG into the editor. It is resized, converted to WebP and
+embedded as a data URL, and the preview renders it immediately. Confirm nothing left the
+browser:
+
+```js
+performance.getEntriesByType('resource').filter((r) => r.initiatorType === 'img').length
+```
+
+reads `0`. Reload — the image is still there, because it lives in the document text rather
+than in any cache. Ctrl+Z once removes a multi-image insert as a single edit.
+
+---
 
 ### [x] T34 · There were no formatting controls at all — 2026-08-29
 

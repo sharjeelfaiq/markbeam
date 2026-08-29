@@ -14,6 +14,8 @@ browser's local storage and never leaves the machine.
   as you scroll
 - **Mermaid diagrams** — ` ```mermaid ` fences render as you type, with a debounce so a
   half-typed diagram does not flash errors at you
+- **Local images** — paste or drop PNG, JPEG and WebP files; they are resized and embedded
+  in the Markdown without being uploaded
 - **PDF export** — page breaks fall between blocks, so a heading or a table row is never
   sliced in half
 - **GitHub-style alerts** — `> [!NOTE]`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`

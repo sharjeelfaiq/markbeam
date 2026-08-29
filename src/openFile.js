@@ -15,8 +15,7 @@
  *   would otherwise fill the editor with replacement characters and save them.
  */
 
-/** Comfortably past any real Markdown document, and well clear of the storage quota. */
-const MAX_BYTES = 1024 * 1024;
+import { MAX_DOCUMENT_BYTES } from './documentLimits.js';
 
 const TEXT_EXTENSION = /\.(md|markdown|mdown|mkd|mkdn|text|txt)$/i;
 
@@ -46,7 +45,7 @@ export const readMarkdownFile = async (file) => {
     return { ok: false, reason: 'No file to open' };
   }
 
-  if (file.size > MAX_BYTES) {
+  if (file.size > MAX_DOCUMENT_BYTES) {
     return {
       ok: false,
       reason: `“${file.name}” is ${describeSize(file.size)} — too large to store in the browser`

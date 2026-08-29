@@ -85,8 +85,10 @@ const dropFile = (page, name, contents) =>
 /** Same, for a file whose bytes are not text at all. */
 const dropBinary = (page, name) =>
   page.evaluate((fileName) => {
-    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x01, 0x00, 0x02]);
-    const file = new File([bytes], fileName, { type: 'image/png' });
+    // A ZIP-like payload is genuinely unsupported. PNG is now a supported editor input,
+    // so using it here would make this old refusal check contradict the image suite.
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x01, 0x00, 0x02]);
+    const file = new File([bytes], fileName, { type: 'application/octet-stream' });
     const transfer = new DataTransfer();
     transfer.items.add(file);
     document.dispatchEvent(
@@ -210,7 +212,7 @@ export const suite = {
           document.querySelectorAll('#toasts .toast').forEach((el) => el.remove());
         });
 
-        await dropBinary(page, 'screenshot.png');
+        await dropBinary(page, 'archive.zip');
         await sleep(1200);
 
         const afterBinary = (await readIndex(page))?.length ?? 0;

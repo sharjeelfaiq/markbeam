@@ -48,6 +48,7 @@ import {
   newDocId,
   loadMarkdownMode,
   loadScrollSync,
+  canPersistContent,
   saveContent,
   saveDocTitle,
   saveMarkdownMode,
@@ -56,8 +57,12 @@ import {
 import { initPalette, toggle as togglePalette } from './ui/palette.js';
 import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
 import { initHistory, open as openHistorySheet } from './ui/history.js';
+import { initOutline, open as openOutlineSheet } from './ui/outline.js';
+import { initFormatToolbar } from './ui/formatToolbar.js';
 import { formatStamp } from './ui/stamp.js';
 import { readMarkdownFile } from './openFile.js';
+import { documentBytes, MAX_DOCUMENT_BYTES } from './documentLimits.js';
+import { classifyImageFile, optimizeImage } from './images.js';
 import {
   flushSnapshot,
   forgetHistory,
@@ -505,9 +510,99 @@ const init = () => {
     }
   };
 
+  /*
+   * Image insertion.
+   *
+   * Every file is prepared before the model changes. This keeps a multi-image batch all or
+   * nothing, and the one `executeEdits` call below makes the whole insertion one undo step.
+   * A document switch during asynchronous canvas work cancels the insertion rather than
+   * placing an image into a document that did not receive the paste/drop event.
+   */
+  let insertImages = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) {
+      return;
+    }
+    const startedIn = activeDocId;
+    const prepared = [];
+
+    try {
+      for (const file of files) {
+        prepared.push(await optimizeImage(file));
+      }
+    } catch (error) {
+      toastError(error.message || 'Could not process that image');
+      return;
+    }
+
+    if (activeDocId !== startedIn) {
+      toastError('Image insertion was cancelled because the active document changed');
+      return;
+    }
+
+    const model = editor.getModel();
+    const selection = editor.getSelection();
+    if (!model || !selection) {
+      toastError('Could not find an editor selection for the image');
+      return;
+    }
+
+    const insertion = prepared.map((image) => image.markdown).join('\n\n');
+    const startOffset = model.getOffsetAt(selection.getStartPosition());
+    const endOffset = model.getOffsetAt(selection.getEndPosition());
+    const current = model.getValue();
+    const next = current.slice(0, startOffset) + insertion + current.slice(endOffset);
+
+    if (documentBytes(next) > MAX_DOCUMENT_BYTES) {
+      toastError('Those images would make this document larger than the 1 MiB browser limit');
+      return;
+    }
+
+    if (!canPersistContent(next)) {
+      toastError('There is not enough browser storage space to insert those images');
+      return;
+    }
+
+    editor.pushUndoStop();
+    editor.executeEdits('markbeam-local-images', [
+      { range: selection, text: insertion, forceMoveMarkers: true }
+    ]);
+    editor.pushUndoStop();
+
+    const end = model.getPositionAt(startOffset + insertion.length);
+    editor.setSelection(monaco.Selection.fromPositions(end));
+    editor.revealPositionInCenterIfOutsideViewport(end);
+    editor.focus();
+
+    toast(`Inserted ${prepared.length === 1 ? 'image' : `${prepared.length} images`}`);
+  };
+
+  let imageClassifications = (files) =>
+    files.map((file) => ({ file, ...classifyImageFile(file) }));
+
+  let refuseImageBatch = (classified, source) => {
+    const includesOther = classified.some((entry) => entry.kind === 'other');
+    if (includesOther) {
+      toastError(
+        `${source === 'drop' ? 'Drop' : 'Paste'} images separately from Markdown documents or other files`
+      );
+      return true;
+    }
+
+    const unsupported = classified.find((entry) => entry.kind === 'unsupported-image');
+    if (unsupported) {
+      toastError(unsupported.reason);
+      return true;
+    }
+
+    return false;
+  };
+
   const fileInput = document.querySelector('#file-input');
+  const imageInput = document.querySelector('#image-input');
 
   let openFilePicker = () => fileInput?.click();
+  let openImagePicker = () => imageInput?.click();
 
   if (fileInput) {
     fileInput.addEventListener('change', () => {
@@ -516,6 +611,20 @@ const init = () => {
       fileInput.value = '';
     });
   }
+
+  if (imageInput) {
+    imageInput.addEventListener('change', async () => {
+      try {
+        await insertImages(imageInput.files);
+      } finally {
+        // Choosing the same image twice must still dispatch a fresh change event.
+        imageInput.value = '';
+        editor.focus();
+      }
+    });
+  }
+
+  initFormatToolbar({ editor, formatting, onInsertImage: openImagePicker });
 
   /*
    * Drag and drop, on the document so anywhere on the page accepts a file.
@@ -533,13 +642,94 @@ const init = () => {
   });
 
   document.addEventListener('drop', (event) => {
-    const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) {
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length === 0) {
       return;
     }
     event.preventDefault();
-    openFiles(files);
+
+    const classified = imageClassifications(files);
+    const includesImage = classified.some((entry) => entry.kind !== 'other');
+    if (!includesImage) {
+      openFiles(files);
+      return;
+    }
+
+    if (!refuseImageBatch(classified, 'drop')) {
+      insertImages(files);
+    }
   });
+
+  document.addEventListener('paste', (event) => {
+    if (!editor.hasTextFocus()) {
+      return;
+    }
+
+    const files = Array.from(event.clipboardData?.files || []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const classified = imageClassifications(files);
+    if (!classified.some((entry) => entry.kind !== 'other')) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!refuseImageBatch(classified, 'paste')) {
+      insertImages(files);
+    }
+  }, { capture: true });
+
+  /*
+   * The outline.
+   *
+   * Headings are read from the rendered preview rather than from the Markdown source, so
+   * anything the parser decided is a heading is what appears — no second, subtly different
+   * parse to keep in step. They carry no ids, so a row is identified by its index in that
+   * list and the pick re-queries at the same index.
+   */
+  let collectHeadings = () =>
+    Array.from(outputElement?.querySelectorAll('h1, h2, h3, h4, h5, h6') || []).map(
+      (heading, index) => ({
+        index,
+        level: Number(heading.tagName.slice(1)),
+        text: heading.textContent.trim() || `Untitled ${heading.tagName}`
+      })
+    );
+
+  let scrollPreviewToHeading = (index) => {
+    /*
+     * In Editor-only view the preview pane is `display: none`, so scrolling it does nothing
+     * and the outline would appear broken. Reveal it first — jumping to a heading you cannot
+     * see is not a jump.
+     */
+    if (getViewMode() === 'editor') {
+      setViewMode('split');
+    }
+
+    // The pane is the scroll container; `#preview-wrapper` does not scroll.
+    const pane = document.querySelector('.pane--preview');
+    const heading = collectHeadingElements()[index];
+    if (!pane || !heading) {
+      return;
+    }
+
+    /*
+     * Measured from bounding rects rather than `offsetTop`, because the heading's
+     * `offsetParent` is not the pane — `offsetTop` would be relative to the wrong box.
+     * A small margin keeps the heading clear of the pane's top edge.
+     */
+    const top =
+      heading.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+
+    pane.scrollTo({ top: Math.max(0, top - 12), behavior: 'smooth' });
+  };
+
+  let collectHeadingElements = () =>
+    Array.from(outputElement?.querySelectorAll('h1, h2, h3, h4, h5, h6') || []);
+
+  let openOutline = () => openOutlineSheet();
 
   // ---------- actions ----------
 
@@ -794,11 +984,22 @@ const init = () => {
     markdownModeCommand,
     { title: 'Bold', keys: 'mod+b', run: formatting.bold },
     { title: 'Italic', keys: 'mod+i', run: formatting.italic },
+    { title: 'Strikethrough', run: formatting.strike },
     { title: 'Inline code', keys: 'mod+e', run: formatting.code },
     { title: 'Link', keys: 'mod+shift+k', run: formatting.link },
-    { title: 'Heading', keys: 'mod+shift+h', run: formatting.heading },
+    { title: 'Heading 1', keys: 'mod+shift+h', run: formatting.heading },
+    { title: 'Heading 2', run: () => formatting.setHeading(2) },
+    { title: 'Heading 3', run: () => formatting.setHeading(3) },
+    { title: 'Paragraph', run: formatting.paragraph },
     { title: 'Bullet list', keys: 'mod+shift+l', run: formatting.list },
+    { title: 'Ordered list', run: formatting.orderedList },
+    { title: 'Task list', run: formatting.taskList },
+    { title: 'Blockquote', run: formatting.blockquote },
+    { title: 'Fenced code block', run: formatting.codeBlock },
+    { title: 'Insert table', run: formatting.table },
+    { title: 'Insert local image…', run: openImagePicker },
     { title: 'Open a Markdown file…', run: openFilePicker },
+    { title: 'Document outline', run: openOutline },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
     { title: 'Clear document', run: clearDocument },
@@ -854,6 +1055,11 @@ const init = () => {
    */
   migrateSingleDocument();
   documents = loadDocIndex() || [];
+
+  initOutline({
+    getHeadings: collectHeadings,
+    onPick: scrollPreviewToHeading
+  });
 
   initHistory({
     getEntries: () => historyFor(activeDocId),

@@ -39,12 +39,14 @@
 
   /* structure */
   --toolbar-h: 48px;
+  --format-toolbar-h: 42px;
   --statusbar-h: 26px;
   --divider-hit: 11px;
 
   --z-divider: 10;
   --z-toast: 60;
   --z-dialog: 70;
+  --z-tooltip: 80;
 }
 
 /* ---------- dark (default) ---------- */

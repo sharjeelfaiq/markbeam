@@ -75,12 +75,14 @@ src/
   history.js         autosave snapshots: cadence, thinning, byte budget
   share.js           document <-> URL fragment codec
   openFile.js        reading and validating a dropped or picked file
+  images.js          paste/drop decode, resize to WebP, base64 embed
+  documentLimits.js  the 1 MiB per-document ceiling images are measured against
   editor/            Monaco setup + markbeam-dark/light themes
   markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
   mermaid/           lazy load, render, 150ms debounce, version guard, print copies
   export/            pdf.js (banding), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
-                     history, stamp
+                     history, stamp, formatToolbar, outline
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -145,6 +147,14 @@ Everything goes through `src/storage.js`. Keys are **plain and readable** —
 `{ v: value }` envelope. An earlier build delegated to a third-party library that hashed
 every key (MD5 of `namespace-key`); that is gone, and anything still describing keys as
 hashed is out of date.
+
+**Images live inside the document text**, as base64 WebP produced by `src/images.js`. That is
+what makes `MAX_DOCUMENT_BYTES` in `src/documentLimits.js` load-bearing rather than
+decorative: a document is capped at 1 MiB, and without that cap a single screenshot would
+exceed the entire 512 KB budget `history.js` sweeps against, evicting every snapshot the user
+has. The alternative was an external image host, which would have broken the "nothing is
+uploaded" promise `public/about.html` makes. Raise the cap and the history sweep stops
+meaning anything.
 
 Read and write through `storage.js` anyway, not because the keys are opaque but because it
 carries the migrations, the `{ v }` envelope and the `toBoolean()` normalisation. The tests

@@ -141,6 +141,29 @@ export const loadContent = () => read(KEYS.content);
 export const saveContent = (value) => write(KEYS.content, value);
 
 /*
+ * An image edit is large enough that a swallowed QuotaExceededError would mean real data
+ * loss on reload. Probe with the exact JSON shape used by a document before Monaco changes;
+ * replacing the real content keys then needs no more space than this successful temporary
+ * write did. The fixed internal key is always removed, including after a failed write.
+ */
+const CAPACITY_PROBE_KEY = `${PREFIX}_capacity_probe`;
+
+export const canPersistContent = (value) => {
+  try {
+    localStorage.setItem(CAPACITY_PROBE_KEY, JSON.stringify({ v: value }));
+    return true;
+  } catch (error) {
+    return false;
+  } finally {
+    try {
+      localStorage.removeItem(CAPACITY_PROBE_KEY);
+    } catch (error) {
+      // Storage is unavailable; the attempted write has already reported the failure.
+    }
+  }
+};
+
+/*
  * Documents.
  *
  * `markbeam:docs` holds the index — id, title and last-edited stamp — and each document's

@@ -236,6 +236,9 @@ body {
 }
 
 .pane--editor {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   width: 50%;
   background: var(--editor-bg);
 }
@@ -248,7 +251,191 @@ body {
 }
 
 #editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+/* ============================ editor formatting ============================ */
+
+.format-toolbar {
+  flex: 0 0 var(--format-toolbar-h);
+  width: 100%;
+  min-width: 0;
+  height: var(--format-toolbar-h);
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+
+.format-toolbar__rail {
+  display: flex;
+  align-items: center;
+  width: 100%;
   height: 100%;
+  padding: 3px var(--sp-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.format-toolbar__rail::-webkit-scrollbar {
+  height: 3px;
+}
+
+.format-toolbar__rail::-webkit-scrollbar-thumb {
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+
+.format-toolbar__group {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 1px;
+}
+
+.format-toolbar__group + .format-toolbar__group {
+  margin-left: var(--sp-1);
+  padding-left: var(--sp-1);
+  border-left: 1px solid var(--line);
+}
+
+.format-toolbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.format-toolbar__button:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.format-toolbar__button:active {
+  background: var(--surface-3);
+}
+
+.format-toolbar__button[aria-pressed='true'] {
+  border-color: var(--beam-soft);
+  background: var(--beam-wash);
+  color: var(--beam);
+}
+
+.format-toolbar__button:focus-visible {
+  outline: none;
+  border-color: var(--beam);
+  box-shadow: 0 0 0 2px var(--beam-glow);
+}
+
+.format-toolbar__button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.format-toolbar__heading {
+  width: 50px;
+  gap: 2px;
+}
+
+.format-toolbar__heading > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.format-toolbar__heading-label {
+  min-width: 21px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.format-heading-menu {
+  position: fixed;
+  z-index: var(--z-dialog);
+  width: 150px;
+  padding: var(--sp-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+}
+
+.format-heading-menu[hidden] {
+  display: none;
+}
+
+.format-heading-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.format-heading-menu button:hover,
+.format-heading-menu button:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+
+.format-heading-menu button[aria-checked='true'] {
+  color: var(--beam);
+}
+
+.format-heading-menu button[aria-checked='true']::after {
+  content: '✓';
+  margin-left: auto;
+}
+
+.format-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  max-width: min(260px, calc(100vw - var(--sp-4)));
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--surface-3);
+  color: var(--text-1);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.format-tooltip[data-visible='true'] {
+  visibility: visible;
+  opacity: 1;
 }
 
 .preview-body {
@@ -260,6 +447,10 @@ body[data-view='editor'] .pane--preview,
 body[data-view='preview'] .pane--editor,
 body[data-view='editor'] .beam,
 body[data-view='preview'] .beam {
+  display: none;
+}
+
+body[data-view='preview'] .format-toolbar {
   display: none;
 }
 
@@ -506,6 +697,16 @@ body[data-view='preview'] .pane--preview {
   color: var(--text-1);
 }
 
+/*
+ * Outline rows indent by heading depth. The first level sits flush with every other sheet
+ * row, so only levels 2 and deeper are stepped in — an H1 list should not look inset.
+ */
+.sheet__item[data-level='2'] { padding-left: calc(var(--sp-3) + var(--sp-3)); }
+.sheet__item[data-level='3'] { padding-left: calc(var(--sp-3) + var(--sp-5)); }
+.sheet__item[data-level='4'] { padding-left: calc(var(--sp-3) + var(--sp-6)); }
+.sheet__item[data-level='5'],
+.sheet__item[data-level='6'] { padding-left: calc(var(--sp-3) + var(--sp-6) + var(--sp-3)); }
+
 .sheet__item svg {
   width: 14px;
   height: 14px;
@@ -698,6 +899,7 @@ kbd {
   .statusbar,
   .beam,
   .pane--editor,
+  .format-toolbar,
   .pane-tabs,
   .toasts,
   dialog {
