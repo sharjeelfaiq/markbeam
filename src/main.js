@@ -9,7 +9,8 @@ import './styles/app.css';
 import './styles/preview.css';
 
 import { DEFAULT_DOCUMENT } from './defaultDocument.js';
-import { createEditor, setEditorTheme } from './editor/index.js';
+import { createEditor, setEditorTheme, monaco } from './editor/index.js';
+import { createFormatting } from './editor/format.js';
 import { renderMarkdown } from './markdown/index.js';
 import { loadEmoji } from './markdown/emoji.js';
 import { hasMath, loadMath } from './markdown/math.js';
@@ -89,6 +90,14 @@ const init = () => {
   // The palette is wired below, but `toggle` is a module-level export: passing it here is
   // safe because it no-ops until initPalette() has found the dialog.
   const editor = createEditor(resolvedTheme, { onPaletteKey: togglePalette });
+
+  /*
+   * Formatting binds inside Monaco as well as in the palette below, and both are required.
+   * Ctrl+I never reaches the document listener — Monaco swallows it — and Ctrl+Shift+K is
+   * Monaco's Delete Line, which would destroy the line rather than link it. Registering on the
+   * editor shadows both, the same way the palette's own Ctrl+K does.
+   */
+  const formatting = createFormatting(editor, monaco);
 
   const outputElement = document.querySelector('#output');
   const previewPane = document.querySelector('#preview');
@@ -783,6 +792,12 @@ const init = () => {
     { title: 'Copy share link', run: copyShareLink },
     { title: 'Toggle sync scroll', run: toggleScrollSync },
     markdownModeCommand,
+    { title: 'Bold', keys: 'mod+b', run: formatting.bold },
+    { title: 'Italic', keys: 'mod+i', run: formatting.italic },
+    { title: 'Inline code', keys: 'mod+e', run: formatting.code },
+    { title: 'Link', keys: 'mod+shift+k', run: formatting.link },
+    { title: 'Heading', keys: 'mod+shift+h', run: formatting.heading },
+    { title: 'Bullet list', keys: 'mod+shift+l', run: formatting.list },
     { title: 'Open a Markdown file…', run: openFilePicker },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },

@@ -18,22 +18,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-### [ ] T34 · No formatting controls at all
-
-**Why:** every competitor offers bold/italic/link/list buttons and shortcuts — StackEdit calls
-them "WYSIWYG controls" and they are the first thing a casual user reaches for. Markbeam has
-none: `Ctrl+B` does nothing.
-
-**Watch the documented Monaco trap:** Monaco stops propagation on any keydown it binds, so a
-shortcut must be registered with `editor.addCommand` in `src/editor/index.js` *and* in
-`src/ui/palette.js`, or it only works when the editor is blurred. `Ctrl+K` already needed this.
-
-**Done when:** bold, italic, inline code, link, heading and list work from the keyboard with
-the editor focused, wrap the current selection rather than replacing it, and are reachable
-from the palette.
-
----
-
 ### [ ] T35 · No document outline
 
 **Why:** navigating a long document means scrolling. Headings are already parsed and rendered;
@@ -117,6 +101,104 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T34 · There were no formatting controls at all — 2026-08-29
+
+**Why:** `Ctrl+B` did nothing. Every competitor offers bold/italic/link/list — StackEdit calls
+them "WYSIWYG controls" — and they are the first thing a casual user reaches for.
+
+**What shipped:** `src/editor/format.js` with bold, italic, inline code, link, heading and
+bullet list, bound inside Monaco *and* listed in the palette.
+
+| | |
+|---|---|
+| Bold | `Ctrl+B` |
+| Italic | `Ctrl+I` |
+| Inline code | `Ctrl+E` |
+| Link | `Ctrl+Shift+K` |
+| Heading | `Ctrl+Shift+H` |
+| Bullet list | `Ctrl+Shift+L` |
+
+Every action goes through `executeEdits`, so each is a single undo step rather than unwinding
+character by character.
+
+**The measurement that shaped this, and the mistake in the first version of it**
+
+`CLAUDE.md` warns that Monaco stops propagation on keydowns it binds, so a colliding shortcut
+never reaches the document listener in `src/ui/palette.js`. I measured rather than guessed —
+but the first probe asked only *"does the event reach `document`?"*. That is not the same
+question as *"does Monaco act on it?"*, and the difference mattered:
+
+```
+swallowed (invisible to the palette handler) : Ctrl+I, Ctrl+L, Ctrl+D, Ctrl+H,
+                                               Ctrl+Shift+7, Ctrl+Shift+8
+actually mutates the document                : Ctrl+Shift+K  (Monaco's Delete Line)
+```
+
+The second probe only happened because the failing baseline showed `Ctrl+Shift+K` leaving the
+editor **empty**. Without it this would have shipped a "link" shortcut that deletes the line.
+
+Both cases are handled the same way the palette's own `Ctrl+K` is: a dynamic keybinding
+registered through `editor.addCommand` shadows Monaco's, because dynamic bindings are appended
+after the defaults and the resolver scans candidates backwards. This is the first use of that
+mechanism against a binding Monaco *acts* on rather than a chord prefix, and check 5 below is
+what proves it holds.
+
+All six are registered in both places, not only the two that collide — so a future Monaco
+version grabbing a different key cannot break a shortcut silently.
+
+**Before and after**
+
+```
+✗ Ctrl+B wraps the selection in bold markers    — "Plain sentence here."
+✗ Ctrl+I italicises with the editor focused     — "Plain sentence here."
+✗ Ctrl+E wraps the selection in a code span     — "Plain sentence here."
+✗ Ctrl+Shift+K turns the selection into a link  — ""      ← Monaco deleted the line
+✗ Ctrl+Shift+H makes the line a heading         — "Plain sentence here."
+✗ Ctrl+Shift+L makes the line a list item       — "Plain sentence here."
+✗ every formatting command is in the palette    — missing: bold, italic, code, heading, list
+
+✓ "**Plain sentence here.**"     ✓ "*Plain sentence here.*"
+✓ "`Plain sentence here.`"       ✓ "[Plain sentence here.](url)"
+✓ "# Plain sentence here."       ✓ "- Plain sentence here."
+```
+
+**Two judgement calls**
+
+*No toolbar.* The task body mentioned one; the Done-when did not require it, and `CLAUDE.md`
+records that the toolbar has no width to spare — it is why the document switcher sits behind
+the title caret, and at 375px it already hides controls. Keyboard and palette only.
+
+*Toggling, beyond the requirement.* Done-when asked only that the selection be wrapped rather
+than replaced. Pressing bold twice would then give `****text****`, which is exactly what people
+do when unsure it worked, so a second press unwraps.
+
+**One check is a guard, not evidence.** "Pressing bold twice unwraps" passed in the baseline
+too — vacuously, since nothing happened and there were no markers to nest. It only became
+meaningful once bold worked.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173. Select a word and press `Ctrl+B`; it becomes `**word**` and
+stays selected. Press `Ctrl+B` again and it returns to plain text, not `****word****`.
+
+The two worth trying specifically, because they are the ones Monaco fights over:
+
+- **`Ctrl+I` with the cursor in the editor.** Monaco swallows this key, so a palette-only
+  implementation does nothing here while appearing to work when the editor is blurred.
+- **`Ctrl+Shift+K` on a line with text.** This is Monaco's Delete Line. It must produce
+  `[text](url)` with `url` selected — not an empty line.
+
+`Ctrl+Shift+H` and `Ctrl+Shift+L` toggle `# ` and `- ` across every line the selection touches.
+All six also appear in the palette under Ctrl+K, with their shortcuts shown.
+
+*On the reference* — https://markdownlivepreview.com has no formatting shortcuts and no
+toolbar: `Ctrl+B` does nothing there, which is where Markbeam was before this.
+
+**Not in this task:** a formatting toolbar, blockquote, strikethrough, table insertion, and
+smart list continuation on Enter.
+
+---
 
 ### [x] T33 · Offline is real now — service worker and manifest — 2026-08-29
 
