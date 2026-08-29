@@ -12,25 +12,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-### [ ] T32 · Markbeam cannot open a Markdown file
-
-**Why:** there is no `<input type="file">`, no `FileReader` and no `dataTransfer` handling
-anywhere in `src/`. A Markdown tool that cannot open a `.md` file is missing the thing users
-try first, and StackEdit has had it for years.
-
-It is also the precondition for an honest `/markdown-viewer` page: search results for
-"markdown viewer" are led by dedicated viewer pages, and shipping one that only describes
-*editing* would be a doorway page rather than a real answer to the query.
-
-**Approach:** a file picker plus drag-and-drop onto the editor, opening the result through the
-existing `createDocument()` path in `src/main.js` so it lands as a new document rather than
-overwriting the open one — the same reasoning that made shared links import rather than
-replace. Guard the file size against the localStorage quota `src/history.js` already manages,
-and reject anything that is not text.
-
-**Done when:** a `.md` file opened by picker or by drop becomes a new document with its title
-taken from the filename, the previously open document is untouched, an oversized or non-text
-file is refused with a toast rather than a broken state, and a regression test covers each.
+*Empty — T31 and T32 are done. New bugs go here, above P1.*
 
 ---
 
@@ -150,6 +132,98 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T32 · Markbeam could not open a Markdown file — 2026-08-29
+
+**Why:** verified absent from `src/` — no `<input type="file">`, no `FileReader`, no
+`dataTransfer` handling anywhere. A Markdown tool that cannot open a `.md` file was missing
+the thing users try first, and it blocked an honest `/markdown-viewer` page: shipping one
+while the app could not open a file would be a doorway page, which `docs/seo-brief.md` rules
+out.
+
+**What shipped**
+
+- `src/openFile.js` — reads, validates and names the file. No DOM beyond the File API.
+- A hidden `<input type="file" multiple>` in `index.html`, opened from a palette command
+  (**Open a Markdown file…**) and from a new **Open a file…** row in the documents sheet.
+  The toolbar is documented as having no width to spare, so the sheet is the visible home.
+- Drag and drop anywhere on the page.
+
+**It reuses `createDocument()` rather than reimplementing it.** That function already calls
+`flushActive()`, which saves and snapshots the outgoing document, so *"the previously open
+document is untouched"* fell out of the existing path instead of needing its own handling.
+Opening several files at once leaves the last one active, which is a consequence of the same
+function rather than a rule anyone has to remember.
+
+**The two guards are not cosmetic.** `write()` in `src/storage.js` catches
+`QuotaExceededError` and only `console.warn`s, so an oversized file would *appear* to open,
+silently fail to persist, and be gone on reload — a failure the suites' console-*error*
+checks would not have caught either. Files above **1 MB** are refused. Binary files are
+refused by extension/MIME plus a NUL scan of the decoded text, because a binary decoded as
+UTF-8 produces mojibake rather than an error.
+
+**Before and after**
+
+```
+✗ the palette offers a command for opening a file       — no open command in the palette
+✗ a file chosen in the picker becomes the open document — no <input type="file"> in the page
+✗ a dropped file becomes a new document titled from its filename — index ["Original"]
+✗ an oversized file is refused                          — 1 -> 1 documents, toast ""
+✗ a file that is not text is refused                    — 1 -> 1 documents, toast ""
+
+✓ Open a Markdown file…
+✓ "# Picked Opened through the file picker."
+✓ title "dropped-notes", editor "# Dropped Arrived by drag and drop."
+✓ 3 -> 3 documents, toast "error: “huge.md” is 2 MB — too large to store in the browser"
+✓ 3 -> 3 documents, toast "error: “screenshot.png” is not a text file"
+```
+
+**Monaco's own drag-and-drop still works**, which a document-level drop handler could easily
+have swallowed. Checked with a discriminating probe rather than assumed:
+
+| drag | `defaultPrevented` | whose handler |
+|---|---|---|
+| text over the editor | `true` | Monaco's, untouched |
+| text outside the editor | **`false`** | ours correctly abstaining |
+| files outside the editor | `true` | ours accepting |
+
+The middle row is the one that matters — it proves the handler is not over-broad. `dragover`
+is only cancelled when `dataTransfer.types` contains `Files`.
+
+**One check is a guard, not evidence.** "The document that was open before is untouched"
+passed *before* the feature existed, vacuously, because nothing happened at all. It cannot be
+made to fail first; it exists to catch a regression in the old path. The four checks around it
+carry the proof.
+
+**Also worth recording:** a literal `U+0000` byte ended up in `src/openFile.js` on the first
+write — `grep` reported it as a binary file. Replaced with an escape sequence. Caught by
+inspection, not by any test; nothing in the suite would have noticed.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173. Three ways in, all equivalent:
+
+1. Drag a `.md` file from the desktop anywhere onto the page.
+2. Title caret → **Open a file…**
+3. Ctrl+K → **Open a Markdown file…**
+
+The file opens as a *new* document titled from its filename with the extension stripped
+(`notes.md` → `notes`), and the document you had open is still in the list, unchanged. Drag a
+PNG in, or a `.md` over 1 MB, and it is refused with an error toast and no document is
+created.
+
+*On the reference* — https://markdownlivepreview.com has no way to open a file at all: no
+picker, and dropping a file on the page either does nothing or navigates away from the editor,
+losing what was there.
+
+**Precondition worth knowing:** the size limit is on the *file*, not the rendered document, so
+a 1 MB check refuses before anything is read. There is no partial import.
+
+**Not in this task:** `Ctrl+O` (a browser binding Monaco may hold, so it needs registering in
+both `src/editor/index.js` and `src/ui/palette.js` per the keydown-swallowing invariant),
+folder import, `.zip`, and the `/markdown-viewer` page this now unblocks.
+
+---
 
 ### [x] T31 · We published offline support we did not have — 2026-08-29
 

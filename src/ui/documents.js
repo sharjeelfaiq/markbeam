@@ -79,6 +79,7 @@ let renderActions = () => {
 
   [
     { label: 'New document', run: () => handlers.onCreate?.() },
+    { label: 'Open a file…', run: () => handlers.onOpenFile?.() },
     { label: 'Rename current', run: () => handlers.onRename?.() },
     { label: 'Delete current', run: () => handlers.onDelete?.() }
   ].forEach((action) => {

@@ -316,6 +316,16 @@
       </a>
     </footer>
 
+    <!-- Opened programmatically from the palette and the documents sheet. Hidden rather
+         than styled: a bare file input cannot be made to match the toolbar, and the two
+         real entry points are the sheet and drag-and-drop. -->
+    <input
+      type="file"
+      id="file-input"
+      accept=".md,.markdown,.mdown,.mkd,.txt,text/markdown,text/plain"
+      multiple
+      hidden>
+
     <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
     <dialog class="sheet" id="palette" aria-label="Command palette">

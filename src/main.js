@@ -56,6 +56,7 @@ import { initPalette, toggle as togglePalette } from './ui/palette.js';
 import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
 import { initHistory, open as openHistorySheet } from './ui/history.js';
 import { formatStamp } from './ui/stamp.js';
+import { readMarkdownFile } from './openFile.js';
 import {
   flushSnapshot,
   forgetHistory,
@@ -459,6 +460,78 @@ const init = () => {
     }
   });
 
+  /*
+   * Opening files.
+   *
+   * Each file becomes its own document through `createDocument()`, which already flushes and
+   * snapshots the outgoing one — so nothing here has to protect the document that was open.
+   * The last file opened is the one left on screen, which falls out of that rather than being
+   * a rule.
+   */
+  let openFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) {
+      return;
+    }
+
+    let opened = 0;
+    for (const file of files) {
+      const result = await readMarkdownFile(file);
+
+      if (!result.ok) {
+        toastError(result.reason);
+        continue;
+      }
+
+      createDocument({ silent: true });
+      setValue(result.text);
+      setDocTitle(result.title);
+      opened += 1;
+    }
+
+    if (opened === 1) {
+      toast(`Opened ${docTitle}`);
+    } else if (opened > 1) {
+      toast(`Opened ${opened} documents`);
+    }
+  };
+
+  const fileInput = document.querySelector('#file-input');
+
+  let openFilePicker = () => fileInput?.click();
+
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      openFiles(fileInput.files);
+      // Cleared so choosing the same file twice in a row still fires `change`.
+      fileInput.value = '';
+    });
+  }
+
+  /*
+   * Drag and drop, on the document so anywhere on the page accepts a file.
+   *
+   * `preventDefault` only when files are actually involved: Monaco has its own drag-and-drop
+   * for moving text inside the editor, and swallowing every dragover would break it.
+   */
+  let carriesFiles = (event) =>
+    Array.from(event.dataTransfer?.types || []).includes('Files');
+
+  document.addEventListener('dragover', (event) => {
+    if (carriesFiles(event)) {
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener('drop', (event) => {
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    openFiles(files);
+  });
+
   // ---------- actions ----------
 
   let copySource = async () => {
@@ -710,6 +783,7 @@ const init = () => {
     { title: 'Copy share link', run: copyShareLink },
     { title: 'Toggle sync scroll', run: toggleScrollSync },
     markdownModeCommand,
+    { title: 'Open a Markdown file…', run: openFilePicker },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
     { title: 'Clear document', run: clearDocument },
@@ -750,6 +824,7 @@ const init = () => {
     getActiveId: () => activeDocId,
     onSwitch: switchDocument,
     onCreate: createDocument,
+    onOpenFile: openFilePicker,
     onRename: renameDocument,
     onDelete: deleteDocument
   });
