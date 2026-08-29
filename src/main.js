@@ -802,6 +802,33 @@ const init = () => {
   });
   syncSyncButton();
 
+  /*
+   * The service worker, registered after `load` so it never competes with first paint, and
+   * guarded because `navigator.serviceWorker` is absent in Firefox private windows and
+   * anywhere the page is not a secure context.
+   */
+  if ('serviceWorker' in navigator) {
+    const register = () => {
+      navigator.serviceWorker.register('/sw.js').catch((error) => {
+        // Offline support is a bonus; losing it must never take the app down with it.
+        // eslint-disable-next-line no-console
+        console.warn('Offline support unavailable', error);
+      });
+    };
+
+    /*
+     * `readyState` is checked rather than trusting the `load` event on its own. This module
+     * runs after awaiting Monaco from the CDN, so by the time it gets here `load` has usually
+     * already fired — and a listener added afterwards is never called. Registration silently
+     * never happened, which looked exactly like a broken service worker.
+     */
+    if (document.readyState === 'complete') {
+      register();
+    } else {
+      window.addEventListener('load', register);
+    }
+  }
+
   // ---------- boot ----------
 
   onMermaidRender(pulseBeam);

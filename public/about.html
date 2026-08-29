@@ -155,11 +155,15 @@
 
         <h3>Does it work offline?</h3>
         <p>
-          Not yet. Every visit needs a connection: the editor itself is fetched from a CDN,
-          and diagrams, maths, emoji and PDF export each load on demand the first time you
-          use them. Your documents are held in your browser and are never uploaded, so
-          nothing is lost when you are offline — but the app will not start without a
-          network. Proper offline support is on the list.
+          Yes, after the first visit. A service worker keeps what you have already loaded, so
+          once the page has opened once with a connection it will open again without one, with
+          your documents intact — and it can be installed as an app.
+        </p>
+        <p>
+          What it does not do is fetch things you have never used. Syntax highlighting for a
+          language you have not opened before, or PDF export if you have never exported, both
+          need one online run first. That is a property of caching on use rather than
+          downloading several megabytes on the off chance.
         </p>
 
         <h3>Can I use it on a phone?</h3>

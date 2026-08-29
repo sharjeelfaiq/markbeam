@@ -415,17 +415,25 @@ export const suite = {
       checks.push({
         name: 'the landing page answers the offline question honestly',
         /*
-         * Two conditions, because one was not enough. Matching "needs a connection" alone
-         * passed against the dishonest answer, which read "Once the page has loaded, yes —
-         * … The first load needs a connection": the caveat was present while the sentence
-         * still claimed offline support. The affirmative has to be absent too.
+         * An implication, matching the JSON-LD check above, rather than a demand for one
+         * particular answer.
+         *
+         * T31 wrote this as "the answer must be negative", which was correct while offline
+         * did not work. T33 made it work, and the check then failed against a page telling
+         * the truth — a test enforcing a claim that had become false in the other
+         * direction.
+         *
+         * What holds in both directions: an affirmative answer is permitted only when a
+         * worker and a manifest exist, and either answer has to say what it depends on.
          */
         pass:
           typeof offlineAnswer === 'string' &&
-          /no|does not|doesn't|not yet/i.test(offlineAnswer) &&
-          !/yes/i.test(offlineAnswer) &&
-          /connection|network|online/i.test(offlineAnswer),
-        detail: offlineAnswer === null ? 'no offline FAQ answer found' : JSON.stringify(offlineAnswer.slice(0, 110))
+          /connection|network|online|first visit/i.test(offlineAnswer) &&
+          (/\bno\b|\bnot yet\b|does not|doesn't/i.test(offlineAnswer) || reallyWorksOffline),
+        detail:
+          offlineAnswer === null
+            ? 'no offline FAQ answer found'
+            : `worksOffline=${reallyWorksOffline}, ${JSON.stringify(offlineAnswer.slice(0, 90))}`
       });
 
       checks.push({

@@ -104,7 +104,8 @@
           "Export to PDF, HTML, Word and Markdown",
           "Shareable links",
           "Autosave history",
-          "Documents stored locally, with no account and nothing uploaded"
+          "Documents stored locally, with no account and nothing uploaded",
+          "Works offline after the first visit"
         ]
       }
     </script>
@@ -132,6 +133,9 @@
 
     <!-- SVG first so the mark stays crisp on hidpi tabs; the PNG is the fallback for
          browsers that still do not take an SVG icon. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0e1015">
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
     <script type="module" src="/src/main.js"></script>

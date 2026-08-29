@@ -18,21 +18,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-### [ ] T33 · Make offline real — service worker and manifest
-
-**Why:** the honest fix behind T31, and what StackEdit means by "write offline just like any
-desktop application". Also makes the app installable.
-
-**The obstacle is documented in `CLAUDE.md`:** Monaco is deliberately imported from a
-hard-pinned CDN URL so Vite never bundles it. That decision is exactly what breaks a cold
-offline load. This task revisits it on purpose — self-host Monaco, or precache the CDN
-response — rather than tripping over it by accident.
-
-**Done when:** a second visit with the network disabled loads the app and opens the last
-document; a manifest allows installation; and T31's claim can be restored truthfully.
-
----
-
 ### [ ] T34 · No formatting controls at all
 
 **Why:** every competitor offers bold/italic/link/list buttons and shortcuts — StackEdit calls
@@ -132,6 +117,115 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T33 · Offline is real now — service worker and manifest — 2026-08-29
+
+**Why:** T31 removed the offline claim because it was false. This makes it true, and the claim
+is back — qualified.
+
+**The task's premise was wrong, in our favour.** It assumed this meant self-hosting or
+precaching Monaco, "reopening the pinned-CDN decision `CLAUDE.md` documents". It does not.
+Two measurements settled it:
+
+```
+Monaco is three requests, 1.46 MB over the wire:
+  /npm/monaco-editor@0.52.2/+esm
+  /npm/monaco-editor@0.52.2/esm/vs/basic-languages/markdown/markdown.js   (lazy)
+  /npm/monaco-editor@0.52.2/esm/vs/basic-languages/javascript/javascript  (lazy)
+
+jsdelivr answers with:
+  access-control-allow-origin: *
+  Cache-Control: public, max-age=31536000, immutable
+```
+
+CORS rather than opaque, so a cached response can be checked instead of guessed at, and
+immutable against a version-pinned URL, so cache-first can never go stale. **The CDN import
+stays exactly as documented** and T26's entry-chunk win is untouched.
+
+Those two language files are fetched per fenced-code language, and there are about ninety of
+them — which is why there is **no precache manifest**. Caching on use also means no build-time
+asset list (so still no `vite.config.*`), identical behaviour against the dev server's
+unbundled graph and production's hashed chunks, and no 6.5 MB download of build output most
+visitors never touch.
+
+**The rule that matters, in `public/sw.js`:** navigations are **network-first**. A cache-first
+`index.html` pins every visitor to the build they first loaded with no way out short of
+clearing site data. Only content-hashed `/assets/` and the pinned CDN are cache-first, both
+immutable by construction. `VERSION` is the kill switch — every other cache is deleted on
+activate.
+
+**Measured cache footprint** (dev server, after one warm load and a reload):
+
+| | entries | size |
+|---|---|---|
+| Monaco from the CDN | 3 | 5.9 MB |
+| app shell + modules | 73 | 3.5 MB |
+| **total** | **76** | **9.2 MB** |
+
+Two caveats, because the number looks alarming without them: caches store **decompressed**
+bytes, so Monaco's 5.9 MB is the 1.46 MB that crossed the wire; and the 73 module entries are
+the dev server's unbundled graph — production caches a dozen-odd hashed chunks instead.
+
+**Before and after**
+
+```
+✗ a service worker takes control of the page       — no controller after 20s
+✗ the editor still loads with the network disabled — no editor — Monaco could not be fetched
+✗ the document written before going offline is still there — ""
+✗ the whole shell is served from cache             — title "localhost", toolbar false
+✗ a manifest is linked                             — no <link rel="manifest">
+
+✓ navigator.serviceWorker.controller is set
+✓ Monaco rendered from cache
+✓ "# Written before going offline"
+✓ title "Markbeam — Online Markdown Editor with Live Preview", toolbar true, preview true
+✓ name "Markbeam — Online Markdown Editor", display standalone, icons ["192x192","512x512",…]
+```
+
+The offline reload is genuine — `setOfflineMode(true)` — not a simulation.
+
+**Three things that went wrong on the way, all worth keeping**
+
+1. **Registration never ran.** It was hung off `window.addEventListener('load')`, but
+   `main.js` executes *after* awaiting Monaco from the CDN, so `load` had already fired and a
+   listener added afterwards is never called. It looked exactly like a broken worker.
+   `document.readyState` is now checked first.
+2. **The worker silently defeated an existing test.** `tests/math.test.mjs` aborts any request
+   containing `katex` to prove maths degrades gracefully when the chunk fails. With
+   cache-first there is no network request to abort, so the chunk loaded and the probe stopped
+   probing. It now unregisters the worker *and* clears caches first: the premise is "the chunk
+   cannot be obtained", and with a worker in play that has to include the cache.
+3. **A test enforced a claim that had become false in reverse.** T31's check demanded the
+   landing page answer "no" to the offline question — correct then, wrong the moment offline
+   worked. Generalised to the same implication as its sibling: an affirmative answer is
+   permitted only when a worker and a manifest exist. Its `\b` boundaries had also been
+   stripped when first written, so `/no/` matched inside "not" and "cannot"; rebuilt with
+   `String.raw`.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173. Load once with a connection. Then devtools →
+**Application → Service Workers** shows `markbeam-v1` activated. Switch **Network → Offline**
+and reload: the editor appears, your document is there, the toolbar and preview render. The
+install icon appears in the address bar.
+
+Console check of what is actually held:
+
+```js
+caches.keys().then(console.log)   // ["markbeam-v1"]
+```
+
+**Precondition:** offline covers what has already been used. The first visit must succeed
+online. Syntax highlighting for a language you have never opened, and PDF export if you have
+never exported, each need one online run first — a property of caching on use, not an
+oversight, and `/about` says so.
+
+*On the reference* — https://markdownlivepreview.com registers no service worker and has no
+manifest. Go offline and reload and you get the browser's error page.
+
+**Not in this task:** background sync, push, and an update-available prompt.
+
+---
 
 ### [x] T32 · Markbeam could not open a Markdown file — 2026-08-29
 

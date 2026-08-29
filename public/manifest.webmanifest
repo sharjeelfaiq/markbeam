@@ -1,0 +1,33 @@
+{
+  "name": "Markbeam — Online Markdown Editor",
+  "short_name": "Markbeam",
+  "description": "Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0e1015",
+  "theme_color": "#0e1015",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

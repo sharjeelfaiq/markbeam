@@ -279,6 +279,27 @@ export const suite = {
 
     const failureChecks = await withPage(async (page) => {
       const checks = [];
+
+      /*
+       * Aborting the request is not enough once a service worker exists (T33). Its cache-first
+       * rule answers from cache without ever hitting the network, so `request.abort()` is
+       * never reached and the chunk loads anyway — the probe silently stopped probing.
+       *
+       * The premise here is "the KaTeX chunk cannot be obtained", and with a worker in play
+       * that means unregistered *and* uncached. This is a fix to the test environment, not a
+       * relaxation of what is asserted.
+       */
+      await page.evaluate(async () => {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+        }
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((key) => caches.delete(key)));
+        }
+      });
+
       await page.setRequestInterception(true);
       page.on('request', (request) => {
         if (request.url().toLowerCase().includes('katex')) {
