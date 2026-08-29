@@ -9,8 +9,14 @@ the project began as a fork, and every piece of derived material has since been 
 most substantially the vendored github-markdown-css, which `src/styles/preview.css` was
 written from scratch to displace. **Before adding third-party code, check whether its
 licence obliges an attribution this file no longer carries.** The check is
-`git ls-files | grep -v package-lock | xargs grep -lI -i "tanabe\|hideaki\|sindre\|sorhus"`,
-which must stay empty.
+
+```
+git ls-files | grep -vE "package-lock|^(CLAUDE|tasks)\.md$" \
+  | xargs grep -lI -i "tanabe\|hideaki\|sindre\|sorhus"
+```
+
+which must stay empty. The two exclusions are this file and `tasks.md`: both quote the
+names in the check itself, so without them the command always reports a false alarm.
 
 Legacy `com.markdownlivepreview` storage keys still exist in real users' browsers and are
 migrated on load — see `migrateLegacyStorage()` in `src/storage.js`. Those strings are a
@@ -62,15 +68,19 @@ Single page, no framework. `src/main.js` is wiring only — it holds the app's m
 
 ```
 src/
-  main.js            entry + wiring, ~250 lines
+  main.js            entry + wiring — ~900 lines, and growing
   defaultDocument.js welcome text
-  theme.js           light/dark/system resolution, preview CSS swap
-  storage.js         all persistence (Storehouse) + legacy migrations
+  theme.js           light/dark/system resolution + the print theme swap
+  storage.js         all persistence (plain keys) + legacy migrations
+  history.js         autosave snapshots: cadence, thinning, byte budget
+  share.js           document <-> URL fragment codec
+  openFile.js        reading and validating a dropped or picked file
   editor/            Monaco setup + markbeam-dark/light themes
-  markdown/          marked + DOMPurify + renderer overrides
-  mermaid/           render, 150ms debounce, version guard
-  export/pdf.js      sandbox, page offsets, banding, jsPDF
-  ui/                viewmode, divider, statusbar, toasts, palette
+  markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
+  mermaid/           lazy load, render, 150ms debounce, version guard, print copies
+  export/            pdf.js (banding), html.js, document.js (Word), download.js
+  ui/                viewmode, divider, statusbar, toasts, palette, documents,
+                     history, stamp
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -130,17 +140,25 @@ Change one, change the other.
 
 ### Persistence
 
-Everything goes through `src/storage.js`. Storehouse hashes its keys (MD5 of
-`namespace-key`), so **never reconstruct a localStorage key by hand** — always read and
-write through the library.
+Everything goes through `src/storage.js`. Keys are **plain and readable** —
+`markbeam:last_state`, `markbeam:doc:<id>`, `markbeam:history:<id>` — each holding a JSON
+`{ v: value }` envelope. An earlier build delegated to a third-party library that hashed
+every key (MD5 of `namespace-key`); that is gone, and anything still describing keys as
+hashed is out of date.
 
-Theme is the exception, and is stored twice: `saveThemePreference()` writes the Storehouse
-key *and* the plain `com.markdownlivepreview_theme` key the boot script reads. Keep both
-writes or dark mode flashes light on reload.
+Read and write through `storage.js` anyway, not because the keys are opaque but because it
+carries the migrations, the `{ v }` envelope and the `toBoolean()` normalisation. The tests
+are the deliberate exception: they assert against real key names, which is only possible
+because the names are stable.
+
+Theme is stored twice: `saveThemePreference()` writes the namespaced preference *and* the
+bare `markbeam:theme` string the pre-paint boot script reads, since that script cannot parse
+JSON before first paint. `com.markdownlivepreview_theme` is read as a fallback for visitors
+arriving from the original site. Keep both writes or dark mode flashes light on reload.
 
 The preference is tri-state (`light` / `dark` / `system`); `loadThemePreference()` migrates
-the booleans and bare strings earlier builds wrote. Storehouse also returns booleans as
-either strings or booleans — hence `toBoolean()`. Use it for any new persisted boolean.
+the booleans and bare strings earlier builds wrote — hence `toBoolean()`. Use it for any new
+persisted boolean.
 
 ### Mermaid rendering
 

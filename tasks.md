@@ -834,7 +834,8 @@ read `light` when the app should already have been back on `dark`.
 
 - [x] The suite waits for the restore it is about to measure, rather than assuming it.
 - [x] Every `emulateMediaType(null)` whose following read depends on the restore is audited.
-- [ ] CI is green. A local run cannot prove this one — that gap is what let T12 and T24 through.
+- [x] CI is green — run 33168529608 for `e928b9d`, all three jobs. A local run could not
+      prove this one; that gap is what let T12 and T24 through.
 
 **Root cause.** `printedPages()` renders a PDF *while* print media is emulated, so its
 `afterprint` hits the guard in `leavePrint()` (`src/theme.js`) — `matchMedia('print')` still
