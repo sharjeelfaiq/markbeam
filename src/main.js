@@ -58,9 +58,21 @@ import { initPalette, toggle as togglePalette } from './ui/palette.js';
 import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
 import { initHistory, open as openHistorySheet } from './ui/history.js';
 import { initOutline, open as openOutlineSheet } from './ui/outline.js';
+// Aliased: main.js already has an openFiles() for the local file picker, and inside init()
+// that declaration shadows the import — the GitHub listing was being handed to the Markdown
+// file reader as if its entries were File objects.
+import { initRemote, openConnect, openFiles as openRemoteFiles } from './ui/remote.js';
+import { listMarkdown, parseRepo, readFile, writeFile } from './github.js';
+import {
+  connect as connectGithub,
+  disconnect as disconnectGithub,
+  getRepo as getGithubRepo,
+  getToken as getGithubToken,
+  isConnected as githubConnected
+} from './githubAuth.js';
 import { initFormatToolbar } from './ui/formatToolbar.js';
 import { formatStamp } from './ui/stamp.js';
-import { readMarkdownFile } from './openFile.js';
+import { readMarkdownFile, titleFromFilename } from './openFile.js';
 import { documentBytes, MAX_DOCUMENT_BYTES } from './documentLimits.js';
 import { classifyImageFile, optimizeImage } from './images.js';
 import {
@@ -731,6 +743,135 @@ const init = () => {
 
   let openOutline = () => openOutlineSheet();
 
+  /*
+   * GitHub sync.
+   *
+   * Manual on purpose: two commands, no background traffic. Every request happens because
+   * somebody just asked for one, which is what makes the claim on /about — nothing leaves
+   * your browser unless you connect a repository — something a person can actually check by
+   * watching the network panel.
+   *
+   * `pending` is what the user wanted before being asked to connect, so that connecting
+   * finishes the errand instead of dropping them back where they started.
+   */
+  let pending = null;
+
+  let githubTarget = () => parseRepo(getGithubRepo());
+
+  let requireConnection = (intent, message) => {
+    if (githubConnected() && githubTarget()) {
+      return true;
+    }
+    pending = intent;
+    openConnect(message);
+    return false;
+  };
+
+  /*
+   * A 401 means the token is worthless, so it is dropped rather than left looking connected.
+   * Anything else may well be transient — a rate limit, a network blip — and the credential
+   * is still good, so it stays.
+   */
+  let handleFailure = (result) => {
+    if (result.status === 401) {
+      disconnectGithub();
+      openConnect(result.reason);
+      return;
+    }
+    toastError(result.reason || 'GitHub request failed');
+  };
+
+  /** `My notes.md` from the document title, since that is what the user will look for. */
+  let remoteFilename = () => `${filenameFromTitle(docTitle, 'md')}`;
+
+  let saveToGithub = async () => {
+    if (!requireConnection('save', null)) {
+      return;
+    }
+
+    const path = remoteFilename();
+    toast(`Saving ${path} to GitHub…`);
+
+    const result = await writeFile(
+      getGithubToken(),
+      githubTarget(),
+      path,
+      editor.getValue(),
+      `Update ${path} from Markbeam`
+    );
+
+    if (!result.ok) {
+      handleFailure(result);
+      return;
+    }
+
+    toast(`Saved ${path} to GitHub`);
+  };
+
+  let openFromGithub = async () => {
+    if (!requireConnection('open', null)) {
+      return;
+    }
+
+    const result = await listMarkdown(getGithubToken(), githubTarget());
+    if (!result.ok) {
+      handleFailure(result);
+      return;
+    }
+
+    openRemoteFiles(result.files);
+  };
+
+  /*
+   * Pulled files become new documents, never a replacement for the open one — the same rule
+   * share links follow. A remote fetch that silently overwrites local work is a data-loss
+   * path, and the remote copy is not automatically the newer one.
+   */
+  let importFromGithub = async (fileEntry) => {
+    const result = await readFile(getGithubToken(), githubTarget(), fileEntry.path);
+    if (!result.ok) {
+      handleFailure(result);
+      return;
+    }
+
+    if (documentBytes(result.text) > MAX_DOCUMENT_BYTES) {
+      toastError(`“${fileEntry.name}” is too large to store in the browser`);
+      return;
+    }
+
+    createDocument({ silent: true });
+    setValue(result.text);
+    setDocTitle(titleFromFilename(fileEntry.name));
+    toast(`Opened ${fileEntry.name} from GitHub`);
+  };
+
+  let onGithubConnect = ({ token, repo, remember }) => {
+    const target = parseRepo(repo);
+    if (!target) {
+      openConnect('That does not look like owner/repository');
+      return;
+    }
+    if (!token) {
+      openConnect('A token is needed to reach GitHub');
+      return;
+    }
+
+    connectGithub(token, `${target.owner}/${target.repo}`, { remember });
+
+    const intent = pending;
+    pending = null;
+    if (intent === 'save') {
+      saveToGithub();
+    } else if (intent === 'open') {
+      openFromGithub();
+    }
+  };
+
+  let disconnectFromGithub = () => {
+    disconnectGithub();
+    toast('Disconnected from GitHub');
+  };
+
   // ---------- actions ----------
 
   let copySource = async () => {
@@ -1000,6 +1141,9 @@ const init = () => {
     { title: 'Insert local image…', run: openImagePicker },
     { title: 'Open a Markdown file…', run: openFilePicker },
     { title: 'Document outline', run: openOutline },
+    { title: 'Save to GitHub…', run: saveToGithub },
+    { title: 'Open from GitHub…', run: openFromGithub },
+    { title: 'Disconnect GitHub', run: disconnectFromGithub },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
     { title: 'Clear document', run: clearDocument },
@@ -1055,6 +1199,12 @@ const init = () => {
    */
   migrateSingleDocument();
   documents = loadDocIndex() || [];
+
+  initRemote({
+    getRepo: getGithubRepo,
+    onConnect: onGithubConnect,
+    onPick: importFromGithub
+  });
 
   initOutline({
     getHeadings: collectHeadings,

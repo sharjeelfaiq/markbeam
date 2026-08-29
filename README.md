@@ -5,8 +5,8 @@
 
 An online Markdown editor with live preview — **[markbeam.vercel.app](https://markbeam.vercel.app)**
 
-Write on the left, read on the right. No account, no upload: the document lives in your
-browser's local storage and never leaves the machine.
+Write on the left, read on the right. No account: the document lives in your browser's
+local storage and stays there unless you connect a GitHub repository yourself.
 
 ## What it does
 
@@ -22,8 +22,12 @@ browser's local storage and never leaves the machine.
 - **Three view modes** — edit, split, read, with a draggable divider
 - **Light, dark and system themes**, resolved before first paint so a reload never flashes
 - **Command palette** on `Ctrl+K`
-- **No third-party requests.** Fonts are self-hosted, there is no analytics tag, and the
-  GitHub link in the status bar is an inline SVG rather than a hotlinked badge.
+- **GitHub sync** — save the open document to a repository, or open one from it, with a
+  fine-grained token you supply. Manual on both sides; nothing syncs in the background
+- **No third-party requests unless you ask for one.** Fonts are self-hosted, there is no
+  analytics tag, and the GitHub link in the status bar is an inline SVG rather than a
+  hotlinked badge. The only outbound calls are the ones GitHub sync makes, after you connect
+  a repository.
 
 ## Getting started
 

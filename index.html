@@ -469,6 +469,51 @@
       <ul class="sheet__list" id="outline-list" aria-label="Jump to a heading"></ul>
     </dialog>
 
+    <!-- GitHub sync. One dialog with two faces — connect, then pick a file — because they
+         are one errand. The token field is cleared the moment it is submitted and on close,
+         so the credential does not sit in the DOM for the rest of the session. -->
+    <dialog class="sheet" id="remote" aria-label="GitHub">
+      <form class="sheet__form" id="remote-form">
+        <p class="sheet__intro" id="remote-intro">
+          Save this document to a GitHub repository, or open one from it. Use a
+          <strong>fine-grained</strong> personal access token with <strong>Contents</strong>
+          read and write access to a <strong>single repository</strong> — that is the whole
+          permission Markbeam needs, and it bounds what a stolen token could reach.
+        </p>
+        <p class="sheet__status" id="remote-status" hidden></p>
+        <label class="sheet__field" for="remote-repo">
+          <span>Repository</span>
+          <input
+            class="sheet__input"
+            id="remote-repo"
+            name="repo"
+            type="text"
+            placeholder="owner/repository"
+            autocomplete="off"
+            spellcheck="false"
+            required />
+        </label>
+        <label class="sheet__field" for="remote-token">
+          <span>Access token</span>
+          <input
+            class="sheet__input"
+            id="remote-token"
+            name="token"
+            type="password"
+            placeholder="github_pat_…"
+            autocomplete="off"
+            spellcheck="false"
+            required />
+        </label>
+        <label class="sheet__check" for="remote-remember">
+          <input id="remote-remember" name="remember" type="checkbox" />
+          <span>Remember on this device — otherwise the token is kept only until this tab closes</span>
+        </label>
+        <button class="sheet__submit" type="submit">Connect</button>
+      </form>
+      <ul class="sheet__list" id="remote-list" aria-label="Open a file from GitHub" hidden></ul>
+    </dialog>
+
     <!-- Autosave history. Its own sheet rather than a third list in #docs: that one is
          about which document is open, this is about which version of it. Same classes. -->
     <dialog class="sheet" id="history" aria-label="Document history">

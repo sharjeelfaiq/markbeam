@@ -107,8 +107,9 @@
         <h1>Markbeam: an online Markdown editor with live preview</h1>
 
         <p class="lede">
-          Write Markdown on the left and watch it render on the right. No account, no upload,
-          no waiting — your documents are stored in your own browser and never leave it.
+          Write Markdown on the left and watch it render on the right. No account, no waiting —
+          your documents are stored in your own browser and stay there unless you connect them
+          to a GitHub repository yourself.
         </p>
 
         <img src="/og.png" alt="The Markbeam editor with Markdown source on the left and rendered output on the right." width="1200" height="630">
@@ -141,6 +142,8 @@
             source.</li>
           <li><strong>Shareable links</strong> — the document is compressed into the URL
             fragment, so it never touches a server.</li>
+          <li><strong>GitHub</strong> — save the open document to a repository you name, or
+            open one from it. Both are manual, and nothing happens until you connect.</li>
         </ul>
 
         <h2>Your documents stay yours</h2>
@@ -150,6 +153,13 @@
           Pasted and dropped images are processed and stored there too. Several documents can
           be kept side by side, and autosave history keeps earlier versions so an accidental
           deletion is recoverable.
+        </p>
+        <p>
+          The one exception is one you switch on: <strong>Save to GitHub</strong> sends the
+          document you are editing to a repository you name, using a token you supply. Nothing
+          is sent before you connect, nothing syncs in the background, and every request
+          happens because you just asked for one. The token is kept only until the tab closes
+          unless you tick <em>remember on this device</em>.
         </p>
 
         <h2>Questions people actually ask</h2>
@@ -174,15 +184,6 @@
         <p>
           Yes. Below roughly 900 pixels the two panes become tabs, so you switch between
           writing and reading rather than splitting a narrow screen.
-        </p>
-
-        <h3>Where did it come from?</h3>
-        <p>
-          Markbeam began as a fork of an older live-preview tool and has since been rewritten
-          — the editor, the renderer, the export path and every stylesheet. Documents saved
-          under the original site's storage keys are still migrated on load, so anyone
-          arriving from it keeps their work. The
-          <a href="https://github.com/sharjeelfaiq/markbeam">source is on GitHub</a>.
         </p>
 
         <a class="cta" href="/">Start writing →</a>

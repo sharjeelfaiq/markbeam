@@ -668,6 +668,117 @@ body[data-view='preview'] .pane--preview {
   outline: none;
 }
 
+/*
+ * The GitHub sheet's connect form. Every value is a token, so both themes come from the same
+ * ramp — there is no [data-theme] rule here, and there must not be one.
+ */
+/*
+ * `display: flex` beats the user-agent [hidden] rule, so hiding the form to show the file
+ * list left both on screen at once. Any element given an explicit display needs this back.
+ */
+.sheet__form[hidden],
+.sheet__list[hidden] {
+  display: none;
+}
+
+.sheet__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.sheet__intro {
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.sheet__intro strong {
+  color: var(--text-1);
+  font-weight: 400;
+}
+
+/* Errors are the reason someone reopens this sheet, so the message leads rather than trails. */
+.sheet__status {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--danger);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.sheet__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.sheet__field > span {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* The palette's input is a borderless search bar; inside a form it needs an edge. */
+.sheet__field .sheet__input {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  font-size: var(--text-md);
+}
+
+.sheet__field .sheet__input:focus {
+  border-color: var(--beam-soft);
+  outline: 2px solid var(--beam-glow);
+  outline-offset: -1px;
+}
+
+.sheet__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.sheet__check input {
+  margin: 2px 0 0;
+  accent-color: var(--beam-soft);
+}
+
+.sheet__submit {
+  align-self: flex-start;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--beam-soft);
+  border-radius: var(--r-sm);
+  background: var(--beam-wash);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.sheet__submit:hover {
+  background: var(--beam-glow);
+}
+
+.sheet__submit:focus-visible {
+  outline: 2px solid var(--beam);
+  outline-offset: 2px;
+}
+
 .sheet__list {
   max-height: 320px;
   margin: 0;

@@ -24,15 +24,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Bigger bets, decide before building
 
-### [ ] T37 · No sync between devices
-
-**Why:** StackEdit syncs to Google Drive, Dropbox and GitHub. Markbeam's documents live in one
-browser profile and cannot leave it except as a share link or an export.
-
-**If this is built, GitHub is the one worth doing** — it fits a developer tool and works
-client-side with a personal access token, where Drive and Dropbox want OAuth and a callback
-server. It would also be the first feature that makes Markbeam hold a credential, which is a
-meaningful change in what the app is and deserves its own security thinking.
+*Empty — T36 and T37 are done. New bets go here, with the decision written down before any code.*
 
 ---
 
@@ -81,6 +73,103 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T37 · Sync between devices, via GitHub — 2026-08-29
+
+**Why:** documents lived in one browser profile and could only leave as a share link or an
+export. StackEdit syncs to Drive, Dropbox and GitHub.
+
+**The decision this task was gated on.** GitHub was the only client-side option — Drive and
+Dropbox want OAuth and a callback server. Three things were settled before any code:
+
+- **Opt-in, and the promise reworded in the same commit.** The app claimed in three places
+  that documents *never* leave the machine (`about.html` lede, its privacy section, `README`).
+  Sync makes that false the moment anyone connects, so all three now say documents stay in
+  the browser *unless you connect a repository yourself*, and the privacy section names the
+  exception in full. `README`'s "No third-party requests" became "unless you ask for one".
+- **Session-only credential by default**, with an explicit *remember on this device* opt-in.
+- **Manual save and open**, not background sync. Every request happens because someone just
+  asked for one, which is what makes the reworded promise checkable in the network panel
+  rather than merely asserted.
+
+**Why the token is not persisted by default.** This is the first credential the app holds,
+and `readSharedPayload()` already renders **attacker-controlled Markdown** in this origin.
+DOMPurify is the only thing between a share link and script execution; if it ever fails,
+whatever is in localStorage is readable. Nothing to read beats something to read.
+
+**Shape**
+
+- `src/github.js` — Contents API client. No DOM, no storage, no token lifetime.
+- `src/githubAuth.js` — the credential, and the only importer of the token storage functions.
+- `src/ui/remote.js` — one sheet with two faces, connect then pick a file.
+- `src/storage.js` — repo name in the usual envelope; the token in its own bare-string pair,
+  deliberately outside the generic helpers.
+
+Pulled files become **new documents**, never a replacement — the rule share links already
+follow, because a remote fetch that silently overwrites local work is a data-loss path.
+
+**Three bugs the build did not catch**
+
+1. `titleFromFilename` used but never imported — every pulled file would have crashed.
+2. A name collision: `main.js` already had a local `openFiles()` for the file picker, which
+   shadowed the import inside `init()`. GitHub listings were handed to the Markdown file
+   reader as if the entries were `File` objects, producing `Could not read "roadmap.md"`.
+   The suite showed an empty list; only a probe explained why.
+3. The connect form rendered *behind* the file list. `.sheet__form { display: flex }` beats
+   the user-agent `[hidden] { display: none }` rule, so hiding it did nothing. Assertions
+   passed — they queried the list, which was correct. **Only looking at a screenshot caught
+   it.** It now has its own check that measures the rendered box, not the attribute.
+
+**Evidence — 19 checks, all fixtures**
+
+The suite fulfils every `api.github.com` call from a fixture, so it never contacts GitHub and
+never needs a real token; a test that only runs on one machine is a test nobody runs.
+
+```
+✓ the token travels in the Authorization header and never in the URL — 2 authed request(s)
+✓ by default the token is not written to localStorage — 10 markbeam keys, none holding it
+✓ a session-only token is gone after a reload
+✓ disconnecting clears the stored token
+✓ a hostile remote document renders inert — imported=true, executed=false, scripts=0
+✓ the token reaches no document, no history snapshot and no URL
+✓ a rejected token surfaces a specific message — GitHub rejected that token…
+```
+
+**Two checks were written to avoid passing vacuously**, which this repo has shipped twice
+before. The leak check seeds a token *first* and then asserts absence — otherwise "no token
+in history" is true of any build with no token concept. The hostile-content check is gated
+on the import having happened, or a build that fetches nothing sails through it. The first
+baseline run came back 12 red / 6 green, and **four of those greens were vacuous**; all four
+were hardened before a line of the feature was written.
+
+**Still unverified: the live round trip.** No fixture can prove the request shape against the
+real API. Saving, the `sha` lookup that turns a create into an update, and the 401 path have
+been exercised only against fixtures. Worth one pass with a fine-grained Contents-only token
+on a scratch repository before relying on it.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com has no sync of any kind. A document
+exists in the tab you typed it in.
+
+*On ours* — http://localhost:5173, `Ctrl+K` → **Save to GitHub…**. The prompt appears and
+**nothing is requested yet** — the network panel stays clear of `api.github.com`, which is the
+reworded privacy claim being checkable rather than asserted. Give it `owner/repo` and a
+fine-grained token with Contents read/write on that one repository; the document is written
+there and the toast names the file. `Open from GitHub…` lists only Markdown files and opens
+one as a **new** document, leaving the current one alone.
+
+The credential, checkable by hand:
+
+```js
+Object.keys(localStorage).filter((k) => k.includes('github'))
+```
+
+reads `['markbeam:github_repo']` after a default connect — the repository is remembered, the
+token is not. Tick *remember on this device* and `markbeam:github_token` joins it.
+**Disconnect GitHub** removes it, and so does a 401.
+
+---
 
 ### [x] T39 · No accessible editor formatting toolbar — 2026-08-29
 

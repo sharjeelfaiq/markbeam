@@ -77,12 +77,14 @@ src/
   openFile.js        reading and validating a dropped or picked file
   images.js          paste/drop decode, resize to WebP, base64 embed
   documentLimits.js  the 1 MiB per-document ceiling images are measured against
+  github.js          Contents API client — list, read, write. No DOM, no storage.
+  githubAuth.js      where the GitHub token lives, and for how long
   editor/            Monaco setup + markbeam-dark/light themes
   markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
   mermaid/           lazy load, render, 150ms debounce, version guard, print copies
   export/            pdf.js (banding), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
-                     history, stamp, formatToolbar, outline
+                     history, stamp, formatToolbar, outline, remote
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -160,6 +162,32 @@ Read and write through `storage.js` anyway, not because the keys are opaque but 
 carries the migrations, the `{ v }` envelope and the `toBoolean()` normalisation. The tests
 are the deliberate exception: they assert against real key names, which is only possible
 because the names are stable.
+
+### The GitHub token — the one credential this app holds
+
+`src/githubAuth.js` owns it and is the only module that may. The rules below are security
+properties, not style, and each one is a thing a later change breaks by accident:
+
+- **Memory by default.** The token lives in a module-scope variable and dies with the tab.
+  It reaches `localStorage` only when the user ticks *remember on this device*. This is not
+  caution for its own sake: `readSharedPayload()` renders **attacker-controlled Markdown** in
+  this origin, and DOMPurify is the only thing between that and script execution. Nothing to
+  read is a better position than something to read.
+- **`Authorization` header, never a URL.** A URL reaches browser history, the `Referer` of
+  anything it links to, and every log in between. `src/github.js` builds every request; keep
+  the credential out of the path and the query.
+- **Never logged, never toasted, never in an error.** `describeFailure()` composes messages
+  from the status code and GitHub's own text for exactly this reason.
+- **Never in a document.** `src/history.js` snapshots document text up to twenty times, so a
+  token that leaks into the document is a token persisted twenty times over. `tests/github.test.mjs`
+  seeds a token and *then* asserts its absence from documents, history and the URL — asserting
+  absence before a token exists proves nothing, which is how that check would rot.
+- **A 401 disconnects.** A token GitHub has rejected is worthless and must not sit there
+  looking like a working connection.
+
+Sync is deliberately **manual**: two palette commands, no background traffic. That is what
+makes the claim on `/about` — nothing leaves your browser unless you connect a repository —
+checkable by watching the network panel rather than merely asserted.
 
 Theme is stored twice: `saveThemePreference()` writes the namespaced preference *and* the
 bare `markbeam:theme` string the pre-paint boot script reads, since that script cannot parse

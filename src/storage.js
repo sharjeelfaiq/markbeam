@@ -357,3 +357,51 @@ export const historyBytes = () => {
     return 0;
   }
 };
+
+/*
+ * GitHub sync (T37).
+ *
+ * The repository name and the token are separated on purpose. `owner/repo` is not a secret
+ * and is always remembered; the token is written here **only** when the user ticks "remember
+ * on this device", and `src/githubAuth.js` is the only caller. See that module for why the
+ * default is memory-only.
+ *
+ * The token is deliberately not wrapped in the `{ v }` envelope helpers below — it is read
+ * and written as a bare string through its own pair of functions, so a future change to the
+ * generic helpers cannot start round-tripping a credential through anything unexpected.
+ */
+const GITHUB_TOKEN_KEY = `${PREFIX}github_token`;
+
+export const loadGithubRepo = () => {
+  const value = read('github_repo');
+  return typeof value === 'string' && value ? value : null;
+};
+
+export const saveGithubRepo = (value) => write('github_repo', value);
+
+export const loadGithubToken = () => {
+  try {
+    const value = localStorage.getItem(GITHUB_TOKEN_KEY);
+    return typeof value === 'string' && value ? value : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+export const saveGithubToken = (value) => {
+  try {
+    localStorage.setItem(GITHUB_TOKEN_KEY, value);
+    return true;
+  } catch (error) {
+    // Never warn: the message would be attached to the credential write.
+    return false;
+  }
+};
+
+export const clearGithubToken = () => {
+  try {
+    localStorage.removeItem(GITHUB_TOKEN_KEY);
+  } catch (error) {
+    // storage unavailable; nothing to clear
+  }
+};
