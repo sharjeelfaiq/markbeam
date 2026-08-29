@@ -3,11 +3,40 @@ name: CI
 # Every push and pull request is verified. Deployment to Vercel happens only after
 # verification passes, and only from main — the test suite is the gate between a change
 # and the live site.
+#
+# Documentation-only pushes skip the run entirely. A nine-minute browser suite and a
+# production deploy prove nothing about an edit to tasks.md, and the ledger is committed
+# alongside every shipped task, so those pushes are frequent.
+#
+# The list is deliberately explicit rather than '**/*.md'. Everything under public/ is site
+# content that Vite copies verbatim into the build — public/about.html is a real page — so a
+# broad glob would risk silently not deploying a content change. Only repo-internal docs are
+# listed, and the two lists are duplicated on purpose: GitHub Actions does not support YAML
+# anchors, so '&docs' / '*docs' would fail to parse. Keep them in step.
+#
+# Trap worth knowing: paths-ignore means no run is created at all, not a run that reports
+# green. That is fine while work goes straight to main, but if branch protection ever
+# requires "Build and test" to pass, a documentation-only PR would block on a check that
+# never runs. workflow_dispatch is kept so a run can always be forced by hand.
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'tasks.md'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'LICENSE'
+      - 'docs/**'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - 'tasks.md'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'LICENSE'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 concurrency:

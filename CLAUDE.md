@@ -278,6 +278,22 @@ Protection and answer an anonymous request with a 302 to SSO, or a 404 in the wi
 after deploy. Pointing the check at one produced a hard CI failure on a deployment that was
 live and healthy. Likewise `--scope` takes the team **slug**, not the org id.
 
+**Documentation-only pushes do not trigger the pipeline.** `paths-ignore` on both `push` and
+`pull_request` covers `tasks.md`, `README.md`, `CLAUDE.md`, `LICENSE`, `docs/**` and
+`.gitignore`. The ledger is committed alongside every shipped task, so those pushes are
+frequent, and a nine-minute browser suite plus a production deploy prove nothing about them.
+
+Three things to know before editing that list:
+
+- **Never add `public/**` or a blanket `**/*.md`.** Everything under `public/` is site content
+  copied verbatim into the build — `public/about.html` is a real page — so ignoring it would
+  silently skip deploying a content change.
+- **The two lists are duplicated on purpose.** GitHub Actions does not support YAML anchors,
+  so `&docs` / `*docs` fails to parse. Keep them in step by hand.
+- `paths-ignore` creates **no run at all**, not a green one. Harmless while work goes straight
+  to main; if branch protection ever requires "Build and test", a docs-only PR would block on
+  a check that never runs. `workflow_dispatch` is kept so a run can be forced.
+
 All work happens directly on `main`. No feature branches, locally or on the remote.
 
 ## Resume Claude Code Session

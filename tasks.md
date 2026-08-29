@@ -170,6 +170,54 @@ free and the entry should be revisited.
 
 ## Completed
 
+### [x] T38 · CI ran a full browser suite and a production deploy for documentation edits — 2026-08-29
+
+**Why:** the ledger is committed alongside every shipped task, and the SEO/backlog work added
+several documentation-only commits, each triggering a nine-minute browser suite and a
+production deploy that could not tell anyone anything about an edit to `tasks.md`.
+
+**What changed.** `paths-ignore` on both `push` and `pull_request` in
+`.github/workflows/ci.yml`, covering `tasks.md`, `README.md`, `CLAUDE.md`, `LICENSE`,
+`docs/**` and `.gitignore`. Deployment is CI-driven — the `deploy` job runs
+`vercel deploy --prebuilt --prod` with a token — so gating the workflow gates the deploy.
+
+**Three decisions worth keeping**
+
+- **The list is explicit, not `**/*.md` and never `public/**`.** Everything under `public/` is
+  site content Vite copies verbatim; `public/about.html` is a real page. A broad glob would
+  silently stop deploying content changes, which is a far worse failure than a wasted run.
+- **The two lists are duplicated by hand.** GitHub Actions does not support YAML anchors, so
+  `&docs` / `*docs` fails to parse. This was caught before committing rather than by a broken
+  run.
+- **`paths-ignore` creates no run at all, not a green one.** Harmless while work goes straight
+  to `main`, but if branch protection ever requires "Build and test", a documentation-only PR
+  would block on a check that never runs. `workflow_dispatch` is kept so a run can be forced.
+
+**Verified by parsing, not by eye.** `npx js-yaml .github/workflows/ci.yml` parses cleanly and
+reports both `paths-ignore` lists identical, `workflow_dispatch` intact and all three jobs
+(`verify`, `check-secrets`, `deploy`) unchanged. A malformed workflow fails on GitHub, not
+locally, so eyeballing the indentation would not have been enough.
+
+**Unverified, and the user's to check.** This assumes CI is the only thing that deploys. If
+Vercel's own Git integration is also connected to the repository, it will keep building on
+every push regardless of what this workflow does, and the fix would additionally need an
+*Ignored Build Step* configured in Vercel. Nothing in this session showed evidence of a second
+deploy path — the live site only ever changed when the `deploy` job ran — but that is absence
+of evidence. Check **Vercel dashboard → Project → Settings → Git**.
+
+**Verify vs reference**
+
+**No user-visible difference** — this changes when the pipeline runs, not what it ships. The
+reference site is irrelevant here; there is nothing to compare.
+
+*What to look for instead:* the next commit touching only `tasks.md` or `docs/` should produce
+**no run** in the Actions tab, and the live site should be untouched. A commit touching
+anything in `src/`, `public/`, `index.html` or the workflow itself should run the full pipeline
+as before. This commit is the second kind, since it edits the workflow — so it will run, and
+the skip is proven by the *next* documentation-only push, not this one.
+
+---
+
 ### [x] T30 · The CI build guard pinned the exact title, so T27 turned main red — 2026-08-28
 
 CI failed on `67a680d` at **Check the build actually produced the app** — not the suite. Deploy
