@@ -18,19 +18,170 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-*Empty — T34, T35 and T39 are all done. New editor gaps go here.*
+### [ ] T40 · Find and replace is undiscoverable, and nothing searches across documents
+
+**Why:** Monaco's find widget already works — `src/editor/index.js` disables `contextmenu`,
+`folding` and `quickSuggestions` but never `find`, so <kbd>Ctrl</kbd>+<kbd>F</kbd> opens it
+today. Nothing anywhere says so: no palette entry, no toolbar affordance, no mention in the
+welcome document. A feature nobody can find is a feature we do not have.
+
+Separately, there is no way to search *across* documents. Now that several can be kept side by
+side, "which document did I write that in" has no answer but opening each one.
+
+StackEdit's own find and replace is self-described as very basic, so this is a place to be
+better rather than merely equal.
+
+**Done when:** find and replace are reachable from the palette and discoverable without prior
+knowledge, and one command searches every stored document, showing which document each hit is
+in and opening it at that hit.
+
+### [ ] T41 · The document list is flat, so it stops working once there are many
+
+**Why:** the index is `{ id, title, updatedAt }` (`src/main.js`), with no hierarchy. StackEdit
+has folders and multiple workspaces. Twenty documents in one flat sheet is a scrolling problem,
+and the sheet is already the switcher, the rename surface and the delete surface.
+
+**Done when:** documents can be organised into folders, the documents sheet shows the hierarchy
+without becoming a second file manager, and every existing flat index migrates with no document
+orphaned — the migration matters more than the feature, because the alternative is losing
+someone's work.
+
+### [ ] T42 · No `[TOC]`, so no export carries a table of contents
+
+**Why:** T35 added an outline, but it is *navigation* — a sheet you open, not part of the
+document. Nothing puts a contents list into the HTML, Word or PDF output, and a long exported
+document has no way in. StackEdit renders a `[TOC]` marker inline.
+
+**Done when:** a `[TOC]` marker renders a linked contents list in the preview, the links work,
+and it survives into the HTML and Word exports and the paginated PDF.
+
+### [ ] T43 · No definition lists
+
+**Why:** Markdown Extra parity, and the one common list type we cannot express. Small: a
+renderer extension in `src/markdown/`, in the same shape as the existing highlight and math
+extensions.
+
+**Done when:** `Term` / `: definition` renders as `<dl>`/`<dt>`/`<dd>`, survives DOMPurify,
+is styled in both themes from tokens, and appears correctly in the PDF.
+
+### [ ] T44 · No typographic punctuation, and it must not be the default
+
+**Why:** StackEdit ships SmartyPants — straight quotes become curly, `--` becomes an en dash.
+It makes prose look typeset.
+
+**It cannot be on by default.** It silently rewrites what the user typed, and this is a
+developer-facing editor where straight quotes inside prose are frequently deliberate. On by
+default, the first time someone pastes a shell snippet into a paragraph it corrupts it.
+
+**Done when:** it is a setting, off by default, persisted like the Markdown mode, and code spans
+and fenced blocks are provably untouched.
+
+---
+
+## P2 — Product
+
+### [ ] T45 · Deleting a document destroys its history with it
+
+**Why:** `deleteDocument()` calls `forgetHistory()`, so a single confirm removes the document
+*and* every autosaved version of it. That is exactly the loss T22 was built to prevent, reached
+by a different route — and unlike an accidental edit, nothing can bring it back.
+
+**Done when:** a deleted document is recoverable for a bounded window, the recovery is
+discoverable at the moment of deletion rather than only in a menu, and the byte budget still
+holds so a trash cannot exhaust the quota `src/history.js` sweeps against.
+
+### [ ] T46 · Exports have a fixed appearance
+
+**Why:** StackEdit offers Handlebars templates for custom output. Ours are fixed: one HTML
+style, one Word style, one PDF layout. Anyone with a house style has to post-process.
+
+**The trap, and it is a real one:** `src/styles/preview.css` is re-parsed by the PDF rasteriser.
+CSS the rasteriser cannot understand breaks export completely while the app itself looks
+perfect, and no visual check catches it — this is why the dependency is `html2canvas-pro`.
+User-supplied CSS must therefore never reach the PDF path unvalidated.
+
+**Done when:** a user stylesheet can change the preview and the HTML export, the PDF path is
+either covered or explicitly excluded with the reason stated, and a stylesheet that would break
+export is refused rather than silently producing a blank document.
+
+### [ ] T47 · Publish to a Gist
+
+**Why:** the smallest real extension of T37 — same token, same client, same auth model, no new
+credential and no new trust decision. A share link carries the document in the URL; a Gist gives
+it an address that survives being pasted into a chat window.
+
+**Done when:** the open document can be published as a Gist, public or secret is an explicit
+choice rather than a default, and the resulting URL is offered for copying.
+
+### [ ] T48 · GitLab as a second sync target
+
+**Why:** token-based exactly like GitHub, so it needs no callback server and no OAuth — the
+constraint that keeps Drive and Dropbox out of scope. Second-largest audience for a
+developer-facing editor after GitHub.
+
+**Done when:** a GitLab project can be connected and used for the same save and open flow as
+T37, the two connections coexist without one clobbering the other, and the token rules in
+`CLAUDE.md` hold for both.
 
 ---
 
 ## P2 — Bigger bets, decide before building
 
-*Empty — T36 and T37 are done. New bets go here, with the decision written down before any code.*
+### [ ] T49 · Automatic sync, and what happens on a conflict
+
+**Why:** StackEdit syncs every few minutes and merges automatically. T37 chose manual on
+purpose — every request happens because someone asked for one, which is what makes the privacy
+claim on `/about` checkable in the network panel rather than merely asserted.
+
+**Decide before writing code.** Automatic sync means change detection, a merge strategy, and a
+conflict UI for the same document edited on two machines. Every failure mode in that list ends
+with someone losing a document, which is why T37 deliberately did not start here. It also
+quietly weakens the "nothing is sent unless you ask" wording that shipped with T37 — that
+sentence would need revisiting in the same commit, exactly as T37 revisited the previous one.
 
 ---
 
 ## P3 — Housekeeping
 
-*Empty — T13, T14, T15, T17 and T26 are all done. New housekeeping goes here.*
+### [ ] T50 · A real table editor — an advantage, not parity
+
+**Why:** *flagged as ahead of the competitor rather than catching up.* StackEdit has had an open
+request for a table editor for years. We already insert a table from the toolbar (T39); editing
+one is the missing half, and Markdown tables are the single most tedious thing to maintain by
+hand.
+
+**Done when:** an existing table can have rows and columns added, removed and realigned without
+hand-counting pipes, the source stays readable afterwards, and a cell containing a pipe is still
+escaped correctly.
+
+### [ ] T51 · Presentation mode — an advantage, not parity
+
+**Why:** *flagged as ahead.* Neither editor has one. Slides split on `---` would reuse machinery
+that already exists: the print stylesheet knows how to show the document without the app, and
+the PDF exporter already computes page boundaries that fall between blocks.
+
+**Done when:** a document can be presented full-screen one slide at a time, keyboard navigable,
+and exported to a paginated PDF one slide per page.
+
+### [ ] T52 · GitHub sync has never met the real API
+
+**Why:** carried forward from T37, which shipped with this stated rather than glossed. Every
+check in `tests/github.test.mjs` is served from a fixture, so the request *shape* is unproven:
+in particular the `sha` lookup in `writeFile()` that turns a create into an update, and the 401
+path. Fixtures agree with whatever the client sends, which is the whole limitation.
+
+**Done when:** one pass against a scratch repository with a fine-grained Contents-only token
+confirms create, update, list, open and the rejected-token path, and the result is recorded here
+— including anything the fixtures had wrong.
+
+### [ ] T53 · Two export paths no suite can reach
+
+**Why:** `.doc` is only really validated by Word, and *Copy rendered HTML* by an actual email
+client. Both have shipped on the strength of their MIME types and inlined styles alone.
+
+**Done when:** the Word export is opened in Word and the clipboard HTML pasted into Outlook,
+with the outcome recorded — tables keeping their borders and header shading is the specific
+thing at risk, since that is what the inlining exists for.
 
 ---
 
@@ -42,6 +193,21 @@ as requested without changing that foundation.
 
 **Upstream contribution.** The project is developed independently; there is no upstream
 to contribute back to.
+
+**Google Drive and Dropbox sync, and publishing to Blogger, WordPress, Zendesk or Tumblr.**
+StackEdit does all of these; every one needs OAuth and a callback server to hold the redirect.
+Standing one up ends "there is no server that sees what you write" — the claim T36 turned down
+an external image host to keep, one commit before T37 was written around it. Token-based targets
+carry no such cost, which is why T47 and T48 are in the backlog and these are not. Revisit only
+if the project ever decides to run a server, and revisit `/about` in the same breath.
+
+**Collaborative workspaces and inline comments.** StackEdit's headline differentiator, and the
+one gap that is not a feature. Real-time collaboration needs a server, accounts, identity and
+conflict-free replicated state; comments need all of that plus a permission model. That is a
+different product built on a different persistence model, not something to add to this one.
+
+**ABC musical notation.** StackEdit renders it. It is an entire rendering dependency for an
+audience that does not overlap with a developer-facing Markdown editor.
 
 **The duplicate `html2canvas` in the build.** `dist/` contains both
 `html2canvas-pro.esm` (248 KB) and `html2canvas.esm` (200 KB), which looks alarming given how
