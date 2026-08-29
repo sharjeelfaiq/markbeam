@@ -157,6 +157,39 @@ export const suite = {
             : `@type=${ld['@type']}, name=${JSON.stringify(ld.name)}, url=${JSON.stringify(ld.url)}`
       });
 
+      // ---------- claims the site makes about itself ----------
+
+      /*
+       * Advertising offline support requires actually having it.
+       *
+       * Written as an implication rather than "the word must be absent", because an honest
+       * page still says "offline" — in "Markbeam does not work offline yet". A check on the
+       * word would fail against a correct fix, and would have to be deleted the moment T33
+       * makes offline real. This one keeps holding either way.
+       *
+       * The two conditions are a service worker and a manifest, because those are what turn
+       * a second visit without a connection into a working app. Neither exists today, and
+       * `src/editor/index.js` imports Monaco from a CDN, so every load needs the network.
+       */
+      const offlineSupport = await page.evaluate(async () => {
+        const registrations =
+          'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+        return {
+          serviceWorker: registrations.length > 0,
+          manifest: !!document.querySelector('link[rel="manifest"]')
+        };
+      });
+
+      const featureList = Array.isArray(ld.featureList) ? ld.featureList : [];
+      const advertisesOffline = featureList.some((entry) => /offline/i.test(String(entry)));
+      const reallyWorksOffline = offlineSupport.serviceWorker && offlineSupport.manifest;
+
+      checks.push({
+        name: 'structured data does not advertise offline support the app lacks',
+        pass: !advertisesOffline || reallyWorksOffline,
+        detail: `featureList offline claim=${advertisesOffline}, service worker=${offlineSupport.serviceWorker}, manifest=${offlineSupport.manifest}`
+      });
+
       /*
        * Guard, not evidence. New <head> tags are exactly the kind of edit that pushes the
        * pre-paint theme script below the app module or splits it out of the <head>, which
@@ -366,6 +399,33 @@ export const suite = {
           //about/?$/.test(about.canonical || '') &&
           about.backLink,
         detail: `app-fallback=${about.isApp}, title=${JSON.stringify(about.title)}, canonical=${JSON.stringify(about.canonical)}, links home=${about.backLink}`
+      });
+
+      /*
+       * The landing page has to say the same thing. Matching the limitation rather than the
+       * absence of the word, for the reason above.
+       */
+      const offlineAnswer = await page.evaluate(() => {
+        const heading = [...document.querySelectorAll('h3')].find((h) =>
+          /offline/i.test(h.textContent)
+        );
+        return heading?.nextElementSibling?.textContent.replace(/\s+/g, ' ').trim() || null;
+      });
+
+      checks.push({
+        name: 'the landing page answers the offline question honestly',
+        /*
+         * Two conditions, because one was not enough. Matching "needs a connection" alone
+         * passed against the dishonest answer, which read "Once the page has loaded, yes —
+         * … The first load needs a connection": the caveat was present while the sentence
+         * still claimed offline support. The affirmative has to be absent too.
+         */
+        pass:
+          typeof offlineAnswer === 'string' &&
+          /no|does not|doesn't|not yet/i.test(offlineAnswer) &&
+          !/yes/i.test(offlineAnswer) &&
+          /connection|network|online/i.test(offlineAnswer),
+        detail: offlineAnswer === null ? 'no offline FAQ answer found' : JSON.stringify(offlineAnswer.slice(0, 110))
       });
 
       checks.push({

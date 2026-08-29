@@ -12,25 +12,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-### [ ] T31 · We publish offline support we do not have
-
-**Why:** `public/about.html` claims the editor "works offline once the page has loaded" and
-answers "Does it work offline?" with yes, and `index.html` lists `"Works offline in the
-browser"` in the JSON-LD `featureList` — which is a factual assertion made to search engines.
-
-It is not true. `src/editor/index.js:1` imports Monaco from `cdn.jsdelivr.net`, and there is
-no service worker and no manifest. Close the tab, reopen without a connection, and Monaco
-never loads: the app is dead. The claim holds only inside a session that already loaded, which
-is not what a reader takes it to mean.
-
-Written during T28 by me, so this is a self-inflicted inaccuracy rather than drift.
-
-**Done when:** the claim is gone or qualified to what is actually true, in all three places,
-and the `seo` suite still passes with valid JSON-LD. Prose and one array entry — no code path
-changes. T33 may make the claim true later; until then it should not be made.
-
----
-
 ### [ ] T32 · Markbeam cannot open a Markdown file
 
 **Why:** there is no `<input type="file">`, no `FileReader` and no `dataTransfer` handling
@@ -169,6 +150,87 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T31 · We published offline support we did not have — 2026-08-29
+
+**Why:** the site told users and search engines that Markbeam works offline. Three claims:
+the lede and the FAQ answer in `public/about.html`, and `"Works offline in the browser"` in
+the JSON-LD `featureList` in `index.html`. The last is the worst of them — `featureList` is
+structured data, a machine-readable factual assertion made directly to search engines.
+
+Written during T28 by me, so self-inflicted rather than drift.
+
+**It was falser than the task recorded.** Two things the entry did not account for:
+
+1. **Every** load needs a connection, not just the first. `src/editor/index.js:1` imports
+   Monaco from `cdn.jsdelivr.net`, so reopening the tab offline gives no editor at all. The
+   old copy said "the first load needs a connection", which was wrong.
+2. **T26 widened the gap.** Since Mermaid moved behind a dynamic import, diagrams, maths,
+   emoji and PDF export each fetch a chunk on first use — so going offline *mid-session* now
+   breaks features that have not been touched yet.
+
+There is no service worker and no manifest. What is true, and what the copy now says: the
+documents are local, nothing is uploaded, and there is no account.
+
+**The test caught me before the code did.** The first version of the landing-page check
+**passed against the dishonest text**. The old answer read *"Once the page has loaded, yes —
+… The first load needs a connection"*, and the regex matched the caveat while the sentence
+still claimed offline support:
+
+```
+✓ the landing page answers the offline question honestly
+    — "Once the page has loaded, yes — editing, preview and export all run locally…"
+```
+
+Tightened to require an explicit negation **and** the absence of "yes". Then it failed
+correctly. A vacuous green on the one task about not making false claims.
+
+**The JSON-LD check is an implication, not a string ban.** `featureList` may claim offline
+*only if* a service worker and a manifest exist. Asserting the word `offline` is absent would
+have been wrong — an honest page still contains it, in "Not yet" — and would have needed
+deleting the moment T33 makes offline real. As written, it keeps holding.
+
+**Before and after**
+
+```
+✗ structured data does not advertise offline support the app lacks
+    — featureList offline claim=true, service worker=false, manifest=false
+✗ the landing page answers the offline question honestly
+    — "Once the page has loaded, yes — … The first load needs a connection"
+
+✓ structured data does not advertise offline support the app lacks
+    — featureList offline claim=false, service worker=false, manifest=false
+✓ the landing page answers the offline question honestly
+    — "Not yet. Every visit needs a connection: the editor itself is fetched from a CDN…"
+```
+
+Confirmed in the **built** output, since Vite transforms `index.html` and the source is not
+proof: JSON-LD parses as `SoftwareApplication`, 7 feature entries, no offline claim.
+
+**Verify vs reference**
+
+*On ours* — http://localhost:5173, view source and read the JSON-LD, or in the console:
+
+```js
+JSON.parse(document.querySelector('script[type="application/ld+json"]').textContent).featureList
+```
+
+No entry mentions offline. Then open `/about.html` and read the "Does it work offline?"
+answer: it says no, and says why.
+
+The claim can be checked directly. Devtools → Network → **Offline**, then reload: the editor
+never appears, because Monaco is fetched from `cdn.jsdelivr.net` on every visit. That is the
+behaviour the old copy denied.
+
+*On the reference* — https://markdownlivepreview.com makes no offline claim and has no
+structured data at all, so there is nothing to compare. The comparison that matters here is
+against our own previous build.
+
+**Deferred:** making offline actually work is **T33**, and it will mean self-hosting or
+precaching Monaco — reopening the pinned-CDN decision `CLAUDE.md` documents. This task only
+stopped the site saying something untrue in the meantime.
+
+---
 
 ### [x] T38 · CI ran a full browser suite and a production deploy for documentation edits — 2026-08-29
 
