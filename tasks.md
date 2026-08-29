@@ -12,20 +12,115 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T1, T2, T3, T4, T18, T19, T20, T21, T24 and T25 are all done. New bugs go here,
-above P1.*
+### [ ] T31 · We publish offline support we do not have
+
+**Why:** `public/about.html` claims the editor "works offline once the page has loaded" and
+answers "Does it work offline?" with yes, and `index.html` lists `"Works offline in the
+browser"` in the JSON-LD `featureList` — which is a factual assertion made to search engines.
+
+It is not true. `src/editor/index.js:1` imports Monaco from `cdn.jsdelivr.net`, and there is
+no service worker and no manifest. Close the tab, reopen without a connection, and Monaco
+never loads: the app is dead. The claim holds only inside a session that already loaded, which
+is not what a reader takes it to mean.
+
+Written during T28 by me, so this is a self-inflicted inaccuracy rather than drift.
+
+**Done when:** the claim is gone or qualified to what is actually true, in all three places,
+and the `seo` suite still passes with valid JSON-LD. Prose and one array entry — no code path
+changes. T33 may make the claim true later; until then it should not be made.
 
 ---
 
-## P1 — Markdown gaps
+### [ ] T32 · Markbeam cannot open a Markdown file
 
-*Empty — T5, T6, T7 and T8 are all done.*
+**Why:** there is no `<input type="file">`, no `FileReader` and no `dataTransfer` handling
+anywhere in `src/`. A Markdown tool that cannot open a `.md` file is missing the thing users
+try first, and StackEdit has had it for years.
+
+It is also the precondition for an honest `/markdown-viewer` page: search results for
+"markdown viewer" are led by dedicated viewer pages, and shipping one that only describes
+*editing* would be a doorway page rather than a real answer to the query.
+
+**Approach:** a file picker plus drag-and-drop onto the editor, opening the result through the
+existing `createDocument()` path in `src/main.js` so it lands as a new document rather than
+overwriting the open one — the same reasoning that made shared links import rather than
+replace. Guard the file size against the localStorage quota `src/history.js` already manages,
+and reject anything that is not text.
+
+**Done when:** a `.md` file opened by picker or by drop becomes a new document with its title
+taken from the filename, the previously open document is untouched, an oversized or non-text
+file is refused with a toast rather than a broken state, and a regression test covers each.
 
 ---
 
-## P2 — Product
+## P1 — Editor gaps
 
-*Empty — T22, T27, T28 and T29 are all done. New product work goes here.*
+### [ ] T33 · Make offline real — service worker and manifest
+
+**Why:** the honest fix behind T31, and what StackEdit means by "write offline just like any
+desktop application". Also makes the app installable.
+
+**The obstacle is documented in `CLAUDE.md`:** Monaco is deliberately imported from a
+hard-pinned CDN URL so Vite never bundles it. That decision is exactly what breaks a cold
+offline load. This task revisits it on purpose — self-host Monaco, or precache the CDN
+response — rather than tripping over it by accident.
+
+**Done when:** a second visit with the network disabled loads the app and opens the last
+document; a manifest allows installation; and T31's claim can be restored truthfully.
+
+---
+
+### [ ] T34 · No formatting controls at all
+
+**Why:** every competitor offers bold/italic/link/list buttons and shortcuts — StackEdit calls
+them "WYSIWYG controls" and they are the first thing a casual user reaches for. Markbeam has
+none: `Ctrl+B` does nothing.
+
+**Watch the documented Monaco trap:** Monaco stops propagation on any keydown it binds, so a
+shortcut must be registered with `editor.addCommand` in `src/editor/index.js` *and* in
+`src/ui/palette.js`, or it only works when the editor is blurred. `Ctrl+K` already needed this.
+
+**Done when:** bold, italic, inline code, link, heading and list work from the keyboard with
+the editor focused, wrap the current selection rather than replacing it, and are reachable
+from the palette.
+
+---
+
+### [ ] T35 · No document outline
+
+**Why:** navigating a long document means scrolling. Headings are already parsed and rendered;
+nothing surfaces them.
+
+**Done when:** a palette command opens an outline of the document's headings in the existing
+`sheet` pattern (`src/ui/documents.js` and `src/ui/history.js` are the shape to copy), and
+choosing one scrolls the preview to that heading.
+
+---
+
+## P2 — Bigger bets, decide before building
+
+### [ ] T36 · Images cannot be added at all
+
+**Why:** pasting or dropping an image is table stakes elsewhere. Markbeam has no image path.
+
+**The constraint is real and needs a decision first.** With no server there are two options,
+and both cost something: base64 into `localStorage`, which collides with the quota
+`src/history.js` already sweeps against — a single screenshot can exceed the entire 512 KB
+history budget — or an external host, which breaks the "nothing is uploaded" promise that
+`/about` makes and that distinguishes us from StackEdit. Do not start this as a coding task
+until that trade is settled.
+
+---
+
+### [ ] T37 · No sync between devices
+
+**Why:** StackEdit syncs to Google Drive, Dropbox and GitHub. Markbeam's documents live in one
+browser profile and cannot leave it except as a share link or an export.
+
+**If this is built, GitHub is the one worth doing** — it fits a developer tool and works
+client-side with a personal access token, where Drive and Dropbox want OAuth and a callback
+server. It would also be the first feature that makes Markbeam hold a credential, which is a
+meaningful change in what the app is and deserves its own security thinking.
 
 ---
 
