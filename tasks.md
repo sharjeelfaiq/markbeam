@@ -119,37 +119,6 @@ sentence would need revisiting in the same commit, exactly as T37 revisited the 
 
 ## P3 — Housekeeping
 
-### [ ] T55 · `tests/run.mjs` cannot tell a stale dev server from a real failure
-
-**Why:** while building T41 the dev server served old `main.js` and `app.css` while the
-files on disk were correct. Five checks failed and one CSS rule silently did nothing. Every
-one of those failures looked genuine — right suite, right check names, plausible details —
-and the better part of a debugging cycle went into the feature before `curl` against the dev
-server showed the served file had none of the new code in it. An mtime bump fixed it.
-
-`CLAUDE.md` already warns never to edit source *during* a run, because Vite hot-reloads
-mid-run. This is the neighbouring failure it does not cover: the server serving stale code
-*between* runs, where nothing is racing and the result is simply wrong.
-
-The manual check that found it:
-
-```
-curl -s http://localhost:5173/src/main.js | grep -c onToggleFolder
-```
-
-**Done when:** a run cannot silently execute stale code — `tests/run.mjs` fails loudly, the
-way it already does when the dev server is unreachable, rather than reporting failures that
-are not real. It already refuses to run without a dev server, so the shape of that refusal
-exists; this extends it from "is it there" to "is it current".
-
-**Worth thinking about before coding:** there is no general way to ask Vite "is your
-transform cache current", so the check has to be indirect — comparing the newest mtime under
-`src/` against something the server reveals, or requesting one known module and comparing it
-to disk. A check that is itself unreliable would be worse than none, since it would train
-everyone to ignore it.
-
----
-
 ### [ ] T50 · A real table editor — an advantage, not parity
 
 **Why:** *flagged as ahead of the competitor rather than catching up.* StackEdit has had an open
@@ -407,6 +376,68 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T55 · A stale dev server was indistinguishable from a real failure — 2026-08-30
+
+**Why:** during T41 the dev server served an old `main.js` and an old `app.css` while both
+files on disk were correct. Five checks failed and one CSS rule silently did nothing. Every
+failure looked real — right suite, right names, plausible details — and most of a debugging
+cycle went into the feature before `curl` showed the served file had none of the new code in
+it. An mtime bump fixed it.
+
+`CLAUDE.md` already forbids editing source *during* a run, because Vite hot-reloads mid-run.
+This was the neighbouring failure: the server serving stale code *between* runs, where
+nothing is racing and the result is simply wrong.
+
+**Fix: force freshness, do not detect staleness.** `tests/run.mjs` now bumps the mtime of
+every source file before any suite runs — 40 files, mtimes only, no content written — and
+prints `Refreshed 40 source files` so the step is visible in every run.
+
+**Detection was tried and rejected**, and that is the part worth remembering: `?raw` and
+`?t=` are *different module ids with their own cache entries*, so a probe through either can
+come back fresh while the module the app actually imports is stale. A check that can pass
+while the bug is present is worse than no check, because it teaches everyone to trust it.
+
+**On the red/green rule.** Every other suite in this repo was watched failing first. That is
+not achievable here: Vite cache staleness is a race that nothing reproduces on demand. The
+honest red was that `tests/freshness.mjs` did not exist, so the new suite could not import
+and threw. That is recorded in the suite header rather than dressed up as a behavioural
+failure it never was.
+
+**What the new `tooling` suite proves** — 4/4, and no browser involved:
+
+```
+✓ the freshness pass touches every source file — 40 files touched, 0 older than 30s
+✓ it covers stylesheets too, not only scripts — 3 stylesheets in the sweep
+✓ the dev server serves current file contents, not a cached transform — token echoed back
+✓ the probe file is removed afterwards — cleaned up
+```
+
+The third is end-to-end rather than inferential: it writes a file containing a token nothing
+else could contain, asks the dev server for it, and requires the token back. The fourth
+exists because a stray file under `src/` would show up in `git status` and get committed by
+the next person running `git add -A`.
+
+**Stylesheets are in the sweep deliberately** — `app.css` was one of the two files served
+stale, so a JS-only pass would have missed half the original bug.
+
+**Verify vs reference**
+
+No user-visible difference; this is test infrastructure and the app is untouched. Inventing
+a user-facing symptom would be dishonest.
+
+What changed for anyone running the suite: `npm test` now prints `Refreshed 40 source files`
+before the first suite. To see why it exists, edit a source file, then compare disk against
+what the server hands out:
+
+```
+grep -c somethingYouJustAdded src/main.js
+curl -s http://localhost:5173/src/main.js | grep -c somethingYouJustAdded
+```
+
+Those two disagreeing is the bug this prevents.
 
 ---
 

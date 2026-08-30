@@ -12,6 +12,7 @@
  */
 
 import { URL as TARGET } from './lib.mjs';
+import { refreshSources } from './freshness.mjs';
 import { suite as uiSuite } from './ui.test.mjs';
 import { suite as mermaidSuite } from './mermaid.test.mjs';
 import { suite as pdfSuite } from './pdf.test.mjs';
@@ -38,8 +39,9 @@ import { suite as imageSuite } from './images.test.mjs';
 import { suite as toolbarSuite } from './toolbar.test.mjs';
 import { suite as githubSuite } from './github.test.mjs';
 import { suite as searchSuite } from './search.test.mjs';
+import { suite as toolingSuite } from './tooling.test.mjs';
 
-const ALL_SUITES = [searchSuite, githubSuite, seoSuite, openFileSuite, offlineSuite, formatSuite, toolbarSuite, outlineSuite, imageSuite, storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
+const ALL_SUITES = [toolingSuite, searchSuite, githubSuite, seoSuite, openFileSuite, offlineSuite, formatSuite, toolbarSuite, outlineSuite, imageSuite, storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
 
 // `npm test -- mermaid` runs just that suite; substring match on the suite name.
 const filters = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
@@ -66,6 +68,24 @@ if (!reachable) {
   console.error('Start the dev server first:  npm run dev\n');
   process.exit(1);
 }
+
+/*
+ * Force the dev server to re-transform every source file before anything runs.
+ *
+ * A long-lived dev server has served stale code here: during T41 it returned an old
+ * `main.js` and an old `app.css` while both files on disk were correct, producing five
+ * failures that looked entirely real and cost most of a debugging cycle. Touching the files
+ * makes the question moot — the watcher invalidates, and the next request is transformed
+ * from disk.
+ *
+ * Detection was considered and rejected: `?raw` and `?t=` are different module ids with
+ * their own cache entries, so a probe through either can come back fresh while the module the
+ * app actually imports is stale. `tests/tooling.test.mjs` proves this pass does what it says.
+ */
+const refreshed = await refreshSources('src');
+// A brief pause so the watcher has processed the mtime changes before the first request.
+await new Promise((resolve) => setTimeout(resolve, 500));
+process.stdout.write('\nRefreshed ' + refreshed.length + ' source files\n');
 
 const results = [];
 
