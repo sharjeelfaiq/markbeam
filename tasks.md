@@ -18,22 +18,9 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-### [~] T40 · Find and replace is undiscoverable, and nothing searches across documents
+*T40 is done. T41-T44 remain.*
 
-**Why:** Monaco's find widget already works — `src/editor/index.js` disables `contextmenu`,
-`folding` and `quickSuggestions` but never `find`, so <kbd>Ctrl</kbd>+<kbd>F</kbd> opens it
-today. Nothing anywhere says so: no palette entry, no toolbar affordance, no mention in the
-welcome document. A feature nobody can find is a feature we do not have.
-
-Separately, there is no way to search *across* documents. Now that several can be kept side by
-side, "which document did I write that in" has no answer but opening each one.
-
-StackEdit's own find and replace is self-described as very basic, so this is a place to be
-better rather than merely equal.
-
-**Done when:** find and replace are reachable from the palette and discoverable without prior
-knowledge, and one command searches every stored document, showing which document each hit is
-in and opening it at that hit.
+---
 
 ### [ ] T41 · The document list is flat, so it stops working once there are many
 
@@ -334,6 +321,72 @@ Object.keys(localStorage).filter((k) => k.includes('github'))
 reads `['markbeam:github_repo']` after a default connect — the repository is remembered, the
 token is not. Tick *remember on this device* and `markbeam:github_token` joins it.
 **Disconnect GitHub** removes it, and so does a 401.
+
+---
+
+### [x] T40 · Find and replace made discoverable, and search across documents — 2026-08-30
+
+**Why:** two separate problems. Monaco's find widget already worked — `src/editor/index.js`
+disables `contextmenu`, `folding` and `quickSuggestions` but never `find` — and nothing
+anywhere said so. And since T9 allowed several documents, "which document did I write that
+in" had no answer but opening each one.
+
+**The trap, and the substance of this task.** `keys` on a palette command is **not a label**:
+`handleGlobalKeys` in `src/ui/palette.js` binds it globally and calls `preventDefault`. The
+obvious `keys: 'mod+f'` on a find command would therefore have stolen
+<kbd>Ctrl</kbd>+<kbd>F</kbd> from the **preview pane**, where the browser's own find is what
+people want — and it would never have fired in the editor anyway, since Monaco stops
+propagation for keys it binds.
+
+`matches()` already read a `command.hint` field for filtering that `render()` never
+displayed, so the fix was half-built: **`hint` now renders as a badge without binding**. The
+find commands carry `hint`; only *Search all documents* carries `keys`.
+
+**Shape**
+
+- `src/search.js` — pure. Capped at 50 hits total and 10 per document, reporting
+  `truncated` rather than stopping silently. The per-document cap is what stops one flooded
+  file crowding out every other document's matches.
+- `src/ui/search.js` — the sheet, 160ms debounce, because scanning every document on each
+  keystroke makes typing feel heavy.
+- `src/editor/index.js` — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> registered as an
+  `editor.addCommand` **as well as** palette `keys`, per the rule in `CLAUDE.md`. Registered
+  only on the palette it would work everywhere except the editor, which is where a writer is.
+
+The open document is read from `editor.getValue()` rather than storage. The two agree today
+because `saveDoc` runs on every keystroke, but a search that silently depended on that would
+start lying the moment saving is debounced.
+
+**A weak assertion of mine, caught by reading the output.** The first green run reported a
+row as `"UntitledBeta also mentions…"` — the check for "each row names its document" was
+passing on the word *Beta* appearing in the **body text**, not in a title. The fixture now
+names its second document and the check reads `.sheet__result-title` directly:
+`titles rendered: ["Beta notes","Alpha"]`.
+
+**Measured:** baseline 11 red / 3 green, the greens being the standard console-error guards;
+final 14/14. Result rows keep a positive gap at 375px, long snippets clip rather than wrap,
+every row a uniform 44px, zero page overflow at either width.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com has one document and no search of its
+own; StackEdit, the comparison this came from, describes its own find and replace as very
+basic and has nothing that searches across files.
+
+*On ours* — http://localhost:5173:
+
+1. `Ctrl+K` shows **Find in document** and **Find and replace**, each with its shortcut
+   printed beside it. Running either opens Monaco's widget on a focused editor.
+2. Click into the **preview** pane and press <kbd>Ctrl</kbd>+<kbd>F</kbd>. The **browser's**
+   find opens, not ours — that is the trap above, pinned by a check that dispatches Ctrl+F at
+   `#output` and asserts `defaultPrevented === false`.
+3. With two or more documents, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> **from
+   inside the editor** and type a term both contain. Rows name their document and give a line
+   number; choosing one switches document and selects the match.
+
+**Not in this task:** replace *across* documents. The Done-when asked for search and open,
+and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
+own task and its own undo story.
 
 ---
 

@@ -70,10 +70,17 @@ let render = () => {
     label.textContent = command.title;
     button.appendChild(label);
 
-    if (command.keys) {
+    /*
+     * `keys` binds a global shortcut; `hint` only says one exists. That distinction matters:
+     * some shortcuts belong to Monaco or to the browser, and claiming them here would break
+     * them — Ctrl+F in the preview pane being the clearest case. A command that wants the
+     * badge without the binding sets `hint`.
+     */
+    const badge = command.keys ? formatKeys(command.keys) : command.hint;
+    if (badge) {
       const keys = document.createElement('span');
       keys.className = 'sheet__keys';
-      keys.textContent = formatKeys(command.keys);
+      keys.textContent = badge;
       button.appendChild(keys);
     }
 

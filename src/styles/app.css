@@ -779,6 +779,52 @@ body[data-view='preview'] .pane--preview {
   outline-offset: 2px;
 }
 
+/*
+ * Search results. Two lines per row — the document name, then the matching line — because the
+ * question this sheet answers is "which document", and a snippet alone does not answer it.
+ * Every value is a token; there is no [data-theme] rule here and there must not be one.
+ */
+.sheet__item--result {
+  align-items: flex-start;
+}
+
+.sheet__item--result .sheet__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sheet__result-title {
+  color: var(--text-1);
+  font-weight: 400;
+}
+
+/*
+ * The snippet is clipped rather than wrapped. A matching line can be a whole paragraph, and a
+ * row that grows to four lines turns a scannable list into a wall.
+ */
+.sheet__result-line {
+  overflow: hidden;
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The count, and whether the list was cut short. */
+.sheet__note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.sheet__note[hidden] {
+  display: none;
+}
+
 .sheet__list {
   max-height: 320px;
   margin: 0;

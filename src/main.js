@@ -54,7 +54,7 @@ import {
   saveMarkdownMode,
   saveScrollSync
 } from './storage.js';
-import { initPalette, toggle as togglePalette } from './ui/palette.js';
+import { initPalette, isMac, toggle as togglePalette } from './ui/palette.js';
 import { initDocuments, refresh as refreshDocuments } from './ui/documents.js';
 import { initHistory, open as openHistorySheet } from './ui/history.js';
 import { initOutline, open as openOutlineSheet } from './ui/outline.js';
@@ -62,6 +62,7 @@ import { initOutline, open as openOutlineSheet } from './ui/outline.js';
 // that declaration shadows the import — the GitHub listing was being handed to the Markdown
 // file reader as if its entries were File objects.
 import { initRemote, openConnect, openFiles as openRemoteFiles } from './ui/remote.js';
+import { initSearch, open as openSearchSheet } from './ui/search.js';
 import { listMarkdown, parseRepo, readFile, writeFile } from './github.js';
 import {
   connect as connectGithub,
@@ -106,7 +107,10 @@ const init = () => {
   initStatusBar();
   // The palette is wired below, but `toggle` is a module-level export: passing it here is
   // safe because it no-ops until initPalette() has found the dialog.
-  const editor = createEditor(resolvedTheme, { onPaletteKey: togglePalette });
+  const editor = createEditor(resolvedTheme, {
+    onPaletteKey: togglePalette,
+    onSearchKey: () => openSearchSheet()
+  });
 
   /*
    * Formatting binds inside Monaco as well as in the palette below, and both are required.
@@ -872,6 +876,63 @@ const init = () => {
     toast('Disconnected from GitHub');
   };
 
+  /*
+   * Find, replace, and search across documents.
+   *
+   * Monaco's find widget already worked; nothing advertised it. These two commands are pure
+   * discoverability — they trigger Monaco's own actions rather than reimplementing anything,
+   * and they carry `hint` rather than `keys` so the palette shows the shortcut **without**
+   * binding it. Binding Ctrl+F globally would take it from the preview pane, where the
+   * browser's own find is the right behaviour.
+   *
+   * The editor has to be focused first: the palette closes before running a command, and
+   * Monaco will not show the widget for an editor that does not have focus.
+   */
+  let runEditorAction = (action) => {
+    editor.focus();
+    editor.getAction(action)?.run();
+  };
+
+  let findInDocument = () => runEditorAction('actions.find');
+  let findAndReplace = () => runEditorAction('editor.action.startFindReplaceAction');
+
+  /*
+   * The corpus for a cross-document search. The open document is read from the editor rather
+   * than from storage: the two agree today, because `saveDoc` runs on every keystroke, but a
+   * search that silently depends on that would start lying the moment saving is debounced.
+   */
+  let searchCorpus = () =>
+    documents.map((entry) => ({
+      id: entry.id,
+      title: entry.title || 'Untitled',
+      text: entry.id === activeDocId ? editor.getValue() : loadDoc(entry.id)
+    }));
+
+  let openSearch = () => openSearchSheet();
+
+  /*
+   * Arriving *at* the hit, not merely at the document. `openDocument` calls `setValue`, which
+   * puts the cursor back at the start, so the selection has to be applied afterwards.
+   */
+  let goToHit = (hit) => {
+    if (!hit) {
+      return;
+    }
+
+    if (hit.id !== activeDocId) {
+      openDocument(hit.id);
+    }
+
+    editor.setSelection({
+      startLineNumber: hit.line,
+      startColumn: hit.column,
+      endLineNumber: hit.line,
+      endColumn: hit.column + hit.length
+    });
+    editor.revealLineInCenter(hit.line);
+    editor.focus();
+  };
+
   // ---------- actions ----------
 
   let copySource = async () => {
@@ -1140,6 +1201,19 @@ const init = () => {
     { title: 'Insert table', run: formatting.table },
     { title: 'Insert local image…', run: openImagePicker },
     { title: 'Open a Markdown file…', run: openFilePicker },
+    {
+      title: 'Find in document',
+      // A hint, never a binding — see runEditorAction above.
+      hint: isMac() ? '⌘F' : 'Ctrl+F',
+      run: findInDocument
+    },
+    {
+      title: 'Find and replace',
+      // Monaco's own replace binding differs by platform, so the label has to as well.
+      hint: isMac() ? '⌥⌘F' : 'Ctrl+H',
+      run: findAndReplace
+    },
+    { title: 'Search all documents', keys: 'mod+shift+f', run: openSearch },
     { title: 'Document outline', run: openOutline },
     { title: 'Save to GitHub…', run: saveToGithub },
     { title: 'Open from GitHub…', run: openFromGithub },
@@ -1199,6 +1273,11 @@ const init = () => {
    */
   migrateSingleDocument();
   documents = loadDocIndex() || [];
+
+  initSearch({
+    getDocuments: searchCorpus,
+    onPick: goToHit
+  });
 
   initRemote({
     getRepo: getGithubRepo,

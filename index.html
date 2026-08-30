@@ -469,6 +469,21 @@
       <ul class="sheet__list" id="outline-list" aria-label="Jump to a heading"></ul>
     </dialog>
 
+    <!-- Cross-document search. The input is the palette's, the rows are every other
+         sheet's; only the two-line result row is new. -->
+    <dialog class="sheet" id="search" aria-label="Search all documents">
+      <input
+        class="sheet__input"
+        id="search-input"
+        type="search"
+        placeholder="Search every document…"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Search every document" />
+      <ul class="sheet__list" id="search-results" aria-label="Search results"></ul>
+      <p class="sheet__note" id="search-note" hidden></p>
+    </dialog>
+
     <!-- GitHub sync. One dialog with two faces — connect, then pick a file — because they
          are one errand. The token field is cleared the moment it is submitted and on close,
          so the credential does not sit in the DOM for the rest of the session. -->

@@ -62,6 +62,8 @@ graph LR
 
 - **Images** — paste or drop one; it is resized and embedded, never uploaded
 - **Outline** — jump between headings of a long document
+- **Search** — <kbd>Ctrl</kbd>+<kbd>F</kbd> in this document,
+  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> across every document you have
 - **History** — earlier versions are saved as you pause; restore any of them
 - **Several documents** — kept side by side, from the menu beside the title
 - **Export** — PDF, HTML, Word, Markdown, or a link that carries the whole document in itself
