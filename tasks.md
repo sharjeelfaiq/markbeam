@@ -119,6 +119,37 @@ sentence would need revisiting in the same commit, exactly as T37 revisited the 
 
 ## P3 — Housekeeping
 
+### [ ] T55 · `tests/run.mjs` cannot tell a stale dev server from a real failure
+
+**Why:** while building T41 the dev server served old `main.js` and `app.css` while the
+files on disk were correct. Five checks failed and one CSS rule silently did nothing. Every
+one of those failures looked genuine — right suite, right check names, plausible details —
+and the better part of a debugging cycle went into the feature before `curl` against the dev
+server showed the served file had none of the new code in it. An mtime bump fixed it.
+
+`CLAUDE.md` already warns never to edit source *during* a run, because Vite hot-reloads
+mid-run. This is the neighbouring failure it does not cover: the server serving stale code
+*between* runs, where nothing is racing and the result is simply wrong.
+
+The manual check that found it:
+
+```
+curl -s http://localhost:5173/src/main.js | grep -c onToggleFolder
+```
+
+**Done when:** a run cannot silently execute stale code — `tests/run.mjs` fails loudly, the
+way it already does when the dev server is unreachable, rather than reporting failures that
+are not real. It already refuses to run without a dev server, so the shape of that refusal
+exists; this extends it from "is it there" to "is it current".
+
+**Worth thinking about before coding:** there is no general way to ask Vite "is your
+transform cache current", so the check has to be indirect — comparing the newest mtime under
+`src/` against something the server reveals, or requesting one known module and comparing it
+to disk. A check that is itself unreliable would be worse than none, since it would train
+everyone to ignore it.
+
+---
+
 ### [ ] T50 · A real table editor — an advantage, not parity
 
 **Why:** *flagged as ahead of the competitor rather than catching up.* StackEdit has had an open
