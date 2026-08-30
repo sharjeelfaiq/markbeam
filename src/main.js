@@ -49,6 +49,8 @@ import {
   deleteDoc,
   newDocId,
   loadMarkdownMode,
+  loadTypography,
+  saveTypography,
   loadScrollSync,
   canPersistContent,
   saveContent,
@@ -129,6 +131,7 @@ const init = () => {
 
   let scrollSync = loadScrollSync();
   let markdownMode = loadMarkdownMode();
+  let typography = loadTypography();
   let exporting = false;
 
   /*
@@ -160,7 +163,7 @@ const init = () => {
   };
 
   let convert = (markdown) => {
-    outputElement.innerHTML = renderMarkdown(markdown, markdownMode);
+    outputElement.innerHTML = renderMarkdown(markdown, markdownMode, { typography });
     scheduleMermaidRender();
     pulseBeam();
   };
@@ -1195,6 +1198,29 @@ const init = () => {
 
   // ---------- Markdown mode ----------
 
+  /*
+   * Named for what it will do, like the Markdown mode command beside it, so the palette row
+   * answers "what happens if I pick this" rather than "what is the current state".
+   */
+  const typographyCommand = {
+    title: '',
+    run: () => {
+      typography = !typography;
+      saveTypography(typography);
+      syncTypographyCommand();
+      convert(editor.getValue());
+      toast(typography ? 'Typographic punctuation on' : 'Typographic punctuation off');
+    }
+  };
+
+  let syncTypographyCommand = () => {
+    typographyCommand.title = typography
+      ? 'Turn off typographic punctuation'
+      : 'Turn on typographic punctuation';
+  };
+
+  syncTypographyCommand();
+
   const markdownModeCommand = {
     title: '',
     run: () => {
@@ -1282,6 +1308,7 @@ const init = () => {
     { title: 'Copy share link', run: copyShareLink },
     { title: 'Toggle sync scroll', run: toggleScrollSync },
     markdownModeCommand,
+    typographyCommand,
     { title: 'Bold', keys: 'mod+b', run: formatting.bold },
     { title: 'Italic', keys: 'mod+i', run: formatting.italic },
     { title: 'Strikethrough', run: formatting.strike },

@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { emojiExtension } from './emoji.js';
 import { highlightExtension } from './highlight.js';
 import { definitionListExtension } from './deflist.js';
+import { applyTypography } from './typography.js';
 import { displayMathExtension, inlineMathExtension } from './math.js';
 
 /*
@@ -66,10 +67,34 @@ const ALERTS = {
  */
 const ALERT_MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i;
 
+/*
+ * Whether typographic punctuation is on for the render currently in flight.
+ *
+ * A module-scope flag rather than a fourth and fifth parser: `parse()` is synchronous, so
+ * nothing can interleave between setting this and reading it, and doubling the parser count
+ * to carry one boolean would be a poor trade.
+ */
+let typographyEnabled = false;
+
 let createRenderer = () => {
   const renderer = new Renderer();
   const renderCode = renderer.code.bind(renderer);
   const renderBlockquote = renderer.blockquote.bind(renderer);
+  const renderText = renderer.text.bind(renderer);
+
+  /*
+   * Transform the token's raw text and let marked escape the result — the reverse order
+   * would be matching against `&quot;` and finding nothing.
+   *
+   * A token carrying child tokens is a container; its children arrive here individually, so
+   * transforming the container's rendered HTML as well would corrupt any code span inside it.
+   */
+  renderer.text = (token) => {
+    if (!typographyEnabled || (token.tokens && token.tokens.length > 0)) {
+      return renderText(token);
+    }
+    return renderText({ ...token, text: applyTypography(token.text) });
+  };
 
   renderer.blockquote = (token) => {
     const match = ALERT_MARKER.exec(token.text);
@@ -183,9 +208,21 @@ const createMarkdownParser = ({ gfm, footnotes = false }) => {
 const gfmParser = createMarkdownParser({ gfm: true, footnotes: true });
 const commonMarkParser = createMarkdownParser({ gfm: false });
 
-export const renderMarkdown = (markdown, mode = 'gfm') => {
+export const renderMarkdown = (markdown, mode = 'gfm', { typography = false } = {}) => {
   const parser = mode === 'commonmark' ? commonMarkParser : gfmParser;
-  const html = parser.parse(markdown);
+
+  /*
+   * Cleared in `finally`, not after the call. A parse that throws would otherwise leave the
+   * flag set, and every later render — including ones for documents whose author never turned
+   * this on — would silently curl quotes with no way to tell why.
+   */
+  let html;
+  typographyEnabled = typography;
+  try {
+    html = parser.parse(markdown);
+  } finally {
+    typographyEnabled = false;
+  }
 
   return DOMPurify.sanitize(html, {
     // KaTeX's accessible MathML tree uses both; keep every other DOMPurify default intact.

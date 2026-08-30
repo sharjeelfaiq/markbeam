@@ -18,7 +18,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-*T40, T41 and T43 are done. T42 and T44 remain.*
+*T40, T41, T43 and T44 are done. T42 remains.*
 
 ---
 
@@ -30,20 +30,6 @@ document has no way in. StackEdit renders a `[TOC]` marker inline.
 
 **Done when:** a `[TOC]` marker renders a linked contents list in the preview, the links work,
 and it survives into the HTML and Word exports and the paginated PDF.
-
-### [ ] T44 · No typographic punctuation, and it must not be the default
-
-**Why:** StackEdit ships SmartyPants — straight quotes become curly, `--` becomes an en dash.
-It makes prose look typeset.
-
-**It cannot be on by default.** It silently rewrites what the user typed, and this is a
-developer-facing editor where straight quotes inside prose are frequently deliberate. On by
-default, the first time someone pastes a shell snippet into a paragraph it corrupts it.
-
-**Done when:** it is a setting, off by default, persisted like the Markdown mode, and code spans
-and fenced blocks are provably untouched.
-
----
 
 ## P2 — Product
 
@@ -367,6 +353,71 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T44 · Typographic punctuation, off by default — 2026-08-30
+
+**Why:** StackEdit ships SmartyPants on. Straight quotes to curly, `--` to a dash, `...` to
+an ellipsis — it makes prose look typeset.
+
+**Off by default, and that is the design rather than caution.** This is a developer-facing
+editor, where a straight quote in prose is usually deliberate. On by default, the first time
+someone pastes `curl -H "Accept: text/plain"` into a paragraph it comes out corrupted and
+they have no idea what did it.
+
+**Where it runs.** marked v15 dropped its own `smartypants` option, so the transform is
+`src/markdown/typography.js`, applied in `renderer.text` on the token's **raw text, before
+escaping** — after escaping a straight quote is already `&quot;` and no pattern would match
+it.
+
+**Code is untouched structurally, not by rule.** Code spans render through
+`renderer.codespan` and fenced blocks through `renderer.code`; neither calls the text
+renderer. A text token that carries child tokens is skipped too — its children arrive
+individually, so transforming the container as well would corrupt any code span inside it.
+
+**Rule order is load-bearing:** `---` before `--`, or an em dash is eaten as an en dash plus
+a stray hyphen; and opening quotes before closing ones, so the decision is made on the
+character *before* the quote. That is what makes `Don't` an apostrophe rather than an
+opening quote, without the transform needing to know any English.
+
+**A flaw found while verifying, not by a test.** The flag was set, the parse run, the flag
+cleared. A parse that threw would have left it set, and every later render — including for
+documents whose author never enabled this — would silently curl quotes with nothing to
+indicate why. Now cleared in `finally`.
+
+**Measured:** baseline 6 red / 2 green, one of those greens vacuous and gated before the
+feature was written. Final 8/8.
+
+```
+prose  She said “hello” and then ‘goodbye’ – rather abruptly — twice… Don’t
+code   git log --oneline | curl -H "Accept: text/plain" | grep --count "needle"
+```
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com applies no typographic substitution at
+all; straight quotes stay straight with no way to change that. StackEdit, the comparison this
+came from, applies it always, with no way to turn it off.
+
+*On ours* — http://localhost:5173, paste:
+
+```
+She said "hello" -- then 'goodbye'... Don't stop.
+
+Run `curl -H "Accept: text/plain"` in the shell.
+```
+
+1. Nothing changes. That is the default, and it is the point.
+2. `Ctrl+K` → **Turn on typographic punctuation**. The prose curls; the code span does not.
+3. Reload — still on. `Ctrl+K` → **Turn off** — the straight quotes come back exactly as
+   typed.
+
+The setting, checkable directly:
+
+```js
+JSON.parse(localStorage.getItem('markbeam:typography') || 'null')   // {v: true} once enabled
+```
 
 ---
 

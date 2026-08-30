@@ -34,7 +34,8 @@ const KEYS = {
   splitRatio: 'split_ratio',
   docTitle: 'doc_title',
   markdownMode: 'markdown_mode',
-  collapsedFolders: 'folders_collapsed'
+  collapsedFolders: 'folders_collapsed',
+  typography: 'typography'
 };
 
 let read = (key) => {
@@ -286,6 +287,14 @@ export const saveDocTitle = (value) => write(KEYS.docTitle, value);
  */
 export const loadMarkdownMode = () =>
   read(KEYS.markdownMode) === 'commonmark' ? 'commonmark' : 'gfm';
+/*
+ * Off unless explicitly turned on. `toBoolean` because earlier builds wrote booleans as
+ * strings, and this setting is new enough to have no legacy shapes of its own — it uses the
+ * same normalisation for consistency rather than necessity.
+ */
+export const loadTypography = () => toBoolean(read(KEYS.typography), false);
+export const saveTypography = (value) => write(KEYS.typography, Boolean(value));
+
 export const saveMarkdownMode = (value) =>
   write(KEYS.markdownMode, value === 'commonmark' ? 'commonmark' : 'gfm');
 
