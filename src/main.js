@@ -42,6 +42,8 @@ import {
   saveDocIndex,
   loadActiveDocId,
   saveActiveDocId,
+  loadCollapsedFolders,
+  saveCollapsedFolders,
   loadDoc,
   saveDoc,
   deleteDoc,
@@ -415,6 +417,61 @@ const init = () => {
 
     setDocTitle(next);
     toast(`Renamed to ${docTitle}`);
+  };
+
+  /*
+   * Folders.
+   *
+   * A folder is a string on a document — nothing more. It exists because a document names it
+   * and vanishes when the last one leaves, which is why there is no folder create, rename or
+   * delete to write. Collapse state is the only folder-specific thing worth persisting.
+   */
+  let collapsedFolders = loadCollapsedFolders();
+
+  let folderNames = () =>
+    [...new Set(documents.map((doc) => doc.folder).filter(Boolean))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+
+  let persistCollapsed = () => saveCollapsedFolders(collapsedFolders, folderNames());
+
+  let toggleFolder = (name) => {
+    collapsedFolders = collapsedFolders.includes(name)
+      ? collapsedFolders.filter((entry) => entry !== name)
+      : [...collapsedFolders, name];
+    persistCollapsed();
+    refreshDocuments();
+  };
+
+  /*
+   * `window.prompt` to match Rename, which is the neighbouring action and already works this
+   * way. The existing folder names go in the message: without them, reusing a folder means
+   * recalling its exact spelling, and one typo silently creates a near-duplicate.
+   */
+  let moveToFolder = () => {
+    const entry = documents.find((doc) => doc.id === activeDocId);
+    if (!entry) {
+      return;
+    }
+
+    const existing = folderNames();
+    const message = existing.length
+      ? `Move "${entry.title || 'Untitled'}" to which folder?\n\nExisting: ${existing.join(', ')}\nLeave empty for no folder.`
+      : `Move "${entry.title || 'Untitled'}" to which folder?\n\nLeave empty for no folder.`;
+
+    const answer = window.prompt(message, entry.folder || '');
+    if (answer === null) {
+      return;
+    }
+
+    const folder = answer.trim();
+    entry.folder = folder || undefined;
+    persistDocuments();
+    // A folder that just lost its last document should not linger in the collapsed list.
+    persistCollapsed();
+    refreshDocuments();
+
+    toast(folder ? `Moved to ${folder}` : 'Moved out of its folder');
   };
 
   let deleteDocument = () => {
@@ -1299,6 +1356,9 @@ const init = () => {
   initDocuments({
     getDocuments: () => documents,
     getActiveId: () => activeDocId,
+    getCollapsed: () => collapsedFolders,
+    onToggleFolder: toggleFolder,
+    onMove: moveToFolder,
     onSwitch: switchDocument,
     onCreate: createDocument,
     onOpenFile: openFilePicker,

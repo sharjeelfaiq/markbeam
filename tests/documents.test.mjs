@@ -280,6 +280,229 @@ export const suite = {
         detail: `${(finalIndex || []).length} documents, title "${finalTitle}", editor "${finalText.slice(0, 20)}"`
       });
 
+      // ---------- folders (T41) ----------
+
+      /*
+       * The index gains one optional field, `folder`. Nothing rewrites existing entries, so
+       * the migration cannot orphan a document — but "cannot" is a claim, and the checks below
+       * are what turn it into evidence.
+       *
+       * Seeded straight into storage rather than driven through the UI: the point is what
+       * happens to an index written by an *older build*, which the UI cannot produce.
+       */
+      await resetStorage(page);
+      await page.evaluate(() => {
+        const docs = [
+          { id: 'd-root-1', title: 'Loose note', updatedAt: Date.now() },
+          { id: 'd-work-1', title: 'Roadmap', updatedAt: Date.now(), folder: 'Work' },
+          { id: 'd-work-2', title: 'Postmortem', updatedAt: Date.now(), folder: 'Work' },
+          { id: 'd-home-1', title: 'Recipes', updatedAt: Date.now(), folder: 'Personal' }
+        ];
+        localStorage.setItem('markbeam:docs', JSON.stringify({ v: docs }));
+        localStorage.setItem('markbeam:active_doc', JSON.stringify({ v: 'd-root-1' }));
+        docs.forEach((doc) => {
+          localStorage.setItem('markbeam:doc:' + doc.id, JSON.stringify({ v: '# ' + doc.title }));
+        });
+      });
+      await reload(page);
+      await openDocs(page);
+
+      const grouped = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('#docs-list li')];
+        return {
+          headings: rows
+            .filter((r) => r.querySelector('[data-folder]'))
+            .map((r) => r.querySelector('[data-folder]').dataset.folder),
+          documentTitles: [...document.querySelectorAll('#docs-list [data-doc-id]')].map((el) =>
+            el.querySelector('.sheet__label')?.textContent.trim()
+          )
+        };
+      });
+
+      checks.push({
+        name: 'documents with a folder are grouped under it, and the rest stay at the root',
+        pass:
+          grouped.headings.includes('Work') &&
+          grouped.headings.includes('Personal') &&
+          grouped.documentTitles.length === 4,
+        detail: `headings ${JSON.stringify(grouped.headings)}, ${grouped.documentTitles.length} documents: ${JSON.stringify(grouped.documentTitles)}`
+      });
+
+      const counts = await page.evaluate(() =>
+        [...document.querySelectorAll('#docs-list [data-folder]')].map((el) => ({
+          name: el.dataset.folder,
+          hint: el.querySelector('.sheet__hint')?.textContent.trim()
+        }))
+      );
+      checks.push({
+        name: 'a folder heading says how many documents it holds',
+        pass: counts.some((c) => c.name === 'Work' && /2/.test(c.hint || '')),
+        detail: JSON.stringify(counts)
+      });
+
+      // Collapse "Work" and confirm its documents leave the list.
+      await page.evaluate(() => {
+        document.querySelector('#docs-list [data-folder="Work"]')?.click();
+      });
+      await sleep(400);
+      const collapsed = await page.evaluate(() =>
+        [...document.querySelectorAll('#docs-list [data-doc-id]')].map((el) =>
+          el.querySelector('.sheet__label')?.textContent.trim()
+        )
+      );
+      checks.push({
+        name: 'collapsing a folder hides its documents',
+        pass: !collapsed.includes('Roadmap') && collapsed.includes('Recipes'),
+        detail: JSON.stringify(collapsed)
+      });
+
+      await closeDocs(page);
+      await reload(page);
+      await openDocs(page);
+      const afterReload = await page.evaluate(() =>
+        [...document.querySelectorAll('#docs-list [data-doc-id]')].map((el) =>
+          el.querySelector('.sheet__label')?.textContent.trim()
+        )
+      );
+      checks.push({
+        name: 'the collapsed state survives a reload',
+        pass: !afterReload.includes('Roadmap'),
+        detail: JSON.stringify(afterReload)
+      });
+
+      /*
+       * The active document must never be hidden. With "Work" collapsed and Roadmap open, the
+       * sheet has to expand that folder — otherwise there is no "current" row and the sheet
+       * looks broken.
+       */
+      await closeDocs(page);
+      await page.evaluate(() => {
+        localStorage.setItem('markbeam:active_doc', JSON.stringify({ v: 'd-work-1' }));
+      });
+      await reload(page);
+      await openDocs(page);
+      const withActive = await page.evaluate(() => ({
+        titles: [...document.querySelectorAll('#docs-list [data-doc-id]')].map((el) =>
+          el.querySelector('.sheet__label')?.textContent.trim()
+        ),
+        current: [...document.querySelectorAll('#docs-list [data-doc-id]')]
+          .filter((el) => el.getAttribute('aria-current') === 'true')
+          .map((el) => el.querySelector('.sheet__label')?.textContent.trim()),
+        headings: [...document.querySelectorAll('#docs-list [data-folder]')].map(
+          (el) => el.dataset.folder
+        ),
+        collapsedInStorage: (() => {
+          try {
+            return JSON.parse(localStorage.getItem('markbeam:folders_collapsed') || 'null')?.v || [];
+          } catch (error) {
+            return [];
+          }
+        })()
+      }));
+      checks.push({
+        /*
+         * Gated on the folder existing *and* on Work still being recorded as collapsed. Without
+         * both, this passes on a build with no folders at all — every document is visible when
+         * nothing can be hidden, which proves nothing about the case it is named for.
+         */
+        name: 'the folder holding the open document is expanded, collapsed or not',
+        pass:
+          withActive.headings.includes('Work') &&
+          withActive.collapsedInStorage.includes('Work') &&
+          withActive.titles.includes('Roadmap') &&
+          withActive.current.includes('Roadmap'),
+        detail: withActive.headings.includes('Work')
+          ? `collapsed ${JSON.stringify(withActive.collapsedInStorage)}, visible ${JSON.stringify(withActive.titles)}, current ${JSON.stringify(withActive.current)}`
+          : 'no folder headings exist, so nothing could have been collapsed'
+      });
+
+      // ---------- moving between folders ----------
+
+      const movePrompt = answerDialog(page, 'Personal');
+      const moved = await clickInSheet(page, 'Move to folder');
+      const promptText = await movePrompt;
+      await sleep(700);
+      await openDocs(page);
+
+      const afterMove = await page.evaluate(() => {
+        const headings = [...document.querySelectorAll('#docs-list [data-folder]')].map(
+          (el) => el.dataset.folder
+        );
+        const stored = JSON.parse(localStorage.getItem('markbeam:docs') || 'null')?.v || [];
+        return { headings, folders: stored.map((d) => `${d.title}:${d.folder || 'root'}`) };
+      });
+
+      checks.push({
+        name: 'Move to folder puts the open document in that folder',
+        pass: moved && afterMove.folders.includes('Roadmap:Personal'),
+        detail: moved
+          ? `asked "${(promptText || '').slice(0, 60)}", now ${JSON.stringify(afterMove.folders)}`
+          : 'no Move to folder action'
+      });
+
+      /*
+       * Work held two documents; one has just left. Moving the other out must make the folder
+       * disappear entirely — folders exist only because a document names one, which is what
+       * keeps this from needing folder deletion as a feature.
+       */
+      await closeDocs(page);
+      await page.evaluate(() => {
+        localStorage.setItem('markbeam:active_doc', JSON.stringify({ v: 'd-work-2' }));
+      });
+      await reload(page);
+      const emptyPrompt = answerDialog(page, '');
+      await openDocs(page);
+      await clickInSheet(page, 'Move to folder');
+      await emptyPrompt;
+      await sleep(700);
+      await openDocs(page);
+
+      const afterEmptying = await page.evaluate(() =>
+        [...document.querySelectorAll('#docs-list [data-folder]')].map((el) => el.dataset.folder)
+      );
+      checks.push({
+        name: 'a folder disappears once its last document leaves',
+        pass: !afterEmptying.includes('Work') && afterEmptying.includes('Personal'),
+        detail: `headings now ${JSON.stringify(afterEmptying)}`
+      });
+
+      /*
+       * Guard, not evidence — green before this task and after. An index written by an older
+       * build has no `folder` anywhere; nothing rewrites it, so nothing can be lost. Recorded
+       * because the Done-when calls the migration the part that matters, and a claim with no
+       * check behind it is just a claim.
+       */
+      await closeDocs(page);
+      await resetStorage(page);
+      await page.evaluate(() => {
+        const docs = [
+          { id: 'old-1', title: 'First', updatedAt: Date.now() },
+          { id: 'old-2', title: 'Second', updatedAt: Date.now() },
+          { id: 'old-3', title: 'Third', updatedAt: Date.now() }
+        ];
+        localStorage.setItem('markbeam:docs', JSON.stringify({ v: docs }));
+        localStorage.setItem('markbeam:active_doc', JSON.stringify({ v: 'old-2' }));
+        docs.forEach((doc) => {
+          localStorage.setItem('markbeam:doc:' + doc.id, JSON.stringify({ v: '# ' + doc.title }));
+        });
+      });
+      await reload(page);
+      await openDocs(page);
+      const legacy = await page.evaluate(() => ({
+        titles: [...document.querySelectorAll('#docs-list .sheet__item')]
+          .filter((el) => !el.dataset.folder)
+          .map((el) => el.querySelector('.sheet__label')?.textContent.trim())
+          .filter(Boolean),
+        stored: (JSON.parse(localStorage.getItem('markbeam:docs') || 'null')?.v || []).length
+      }));
+      await closeDocs(page);
+
+      checks.push({
+        name: 'guard: an index written before folders existed still lists every document',
+        pass: legacy.stored === 3 && ['First', 'Second', 'Third'].every((t) => legacy.titles.includes(t)),
+        detail: `${legacy.stored} stored, listed ${JSON.stringify(legacy.titles)} — green before and after, a regression guard rather than evidence`
+      });
+
       checks.push({
         name: 'no console errors',
         pass: errors.length === 0,

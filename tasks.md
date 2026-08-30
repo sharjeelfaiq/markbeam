@@ -18,20 +18,9 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-*T40 is done. T41-T44 remain.*
+*T40 and T41 are done. T42-T44 remain.*
 
 ---
-
-### [ ] T41 · The document list is flat, so it stops working once there are many
-
-**Why:** the index is `{ id, title, updatedAt }` (`src/main.js`), with no hierarchy. StackEdit
-has folders and multiple workspaces. Twenty documents in one flat sheet is a scrolling problem,
-and the sheet is already the switcher, the rename surface and the delete surface.
-
-**Done when:** documents can be organised into folders, the documents sheet shows the hierarchy
-without becoming a second file manager, and every existing flat index migrates with no document
-orphaned — the migration matters more than the feature, because the alternative is losing
-someone's work.
 
 ### [ ] T42 · No `[TOC]`, so no export carries a table of contents
 
@@ -387,6 +376,77 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T41 · Folders for the document list — 2026-08-30
+
+**Why:** the index was `{ id, title, updatedAt }` with no hierarchy, and the sheet rendered one
+flat list — while also being the switcher, the rename surface and the delete surface. At
+twenty documents that is a scrolling problem.
+
+**Shape.** One optional field on the index entry: `folder`, a trimmed string or absent.
+One level, no nesting. Collapsible, with the state persisted. A `Move to folder…` prompt,
+matching how Rename already works.
+
+**Folders exist implicitly**, and that is the whole answer to "without becoming a second
+file manager": a folder exists because a document names it and disappears when the last one
+leaves. There is no folder create, rename or delete to write, and an orphaned folder is not
+a state that can occur.
+
+**The migration is a non-event, by construction.** `loadDocIndex()` already filtered only on
+`typeof entry.id === "string"`, so an old index loads unchanged and every entry reads as
+root. Nothing rewrites it. The safest migration is the one that does not exist — but it is
+still checked, because the Done-when called it the part that mattered most.
+
+**Measured**
+
+- Grouping: headings `["Personal","Work"]`, counts `1 doc` / `2 docs`.
+- Collapsing Work leaves `["Loose note","Recipes"]`, and survives a reload.
+- With `collapsed ["Work"]` in storage and Roadmap open, Roadmap is **visible and current** —
+  the open document is never hidden, or the sheet reads as broken.
+- The prompt offers `Existing: Personal, Work`, so a folder is reused rather than retyped.
+- Emptying Work leaves `headings ["Personal"]`.
+- Nested labels sit at 49px against 37px for root rows, at both widths and in both themes.
+
+**Two mistakes, both mine, both nearly shipped**
+
+1. **The dev server served stale `main.js` and `app.css`** while the files on disk were
+   correct. Five test failures and one invisible CSS bug, all of which looked genuine.
+   `curl` against the dev server proved it; an mtime bump fixed it. `CLAUDE.md` warns about
+   editing source *during* a run — this was the server serving old code *between* runs, which
+   that rule does not cover. Filed as T55.
+2. **The indent check measured the wrong box.** It read the button's `left`, but the rule
+   sets `padding-left`, which moves content and not the border edge — so it read identical
+   for nested and root rows and I nearly accepted it. Measuring the *label* is what showed
+   the difference, and the screenshot is what showed the indent was missing entirely.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com holds a single document with no list at
+all, so there is nothing to organise and nothing to compare. StackEdit, the comparison this
+task came from, is the one with folders and workspaces.
+
+*On ours* — http://localhost:5173, with a few documents:
+
+1. Caret beside the title → **Move to folder…**, type `Work`. The document moves under a
+   `▾ Work` heading showing its count.
+2. Click the heading. It collapses to `▸ Work` and its documents leave the list. Reload — it
+   is still collapsed.
+3. Switch to a document inside a collapsed folder, then reopen the sheet: **that folder is
+   drawn open**, because a sheet with no `current` row in it reads as broken.
+4. Move the last document out of a folder. The folder disappears.
+
+Checkable without looking:
+
+```js
+JSON.parse(localStorage.getItem('markbeam:docs')).v.map((d) => `${d.title}:${d.folder || 'root'}`)
+JSON.parse(localStorage.getItem('markbeam:folders_collapsed')).v
+```
+
+**Not in this task:** nested folders, folder rename or delete as first-class operations,
+drag and drop, and moving more than one document at a time — each is file-manager surface
+the task warned against, and none is needed to answer the Done-when.
 
 ---
 

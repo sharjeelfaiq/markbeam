@@ -33,7 +33,8 @@ const KEYS = {
   viewMode: 'view_mode',
   splitRatio: 'split_ratio',
   docTitle: 'doc_title',
-  markdownMode: 'markdown_mode'
+  markdownMode: 'markdown_mode',
+  collapsedFolders: 'folders_collapsed'
 };
 
 let read = (key) => {
@@ -171,12 +172,43 @@ export const canPersistContent = (value) => {
  * single blob: a blob would rewrite every document on every keystroke, and one oversized
  * document would take all the others down with it when quota is reached.
  */
+/*
+ * `folder` is optional and normalised on the way out, which is the whole of the folders
+ * migration: an index written before folders existed has no such field, reads as root, and is
+ * never rewritten. There is no migration step that could drop a document because there is no
+ * migration step.
+ */
+let normaliseFolder = (value) => {
+  const name = typeof value === 'string' ? value.trim() : '';
+  return name || undefined;
+};
+
 export const loadDocIndex = () => {
   const value = read(KEYS.docs);
   if (!Array.isArray(value)) {
     return null;
   }
-  return value.filter((entry) => entry && typeof entry.id === 'string');
+  return value
+    .filter((entry) => entry && typeof entry.id === 'string')
+    .map((entry) => {
+      const folder = normaliseFolder(entry.folder);
+      return folder ? { ...entry, folder } : { ...entry, folder: undefined };
+    });
+};
+
+/*
+ * Which folders are collapsed. Keyed by name, because a folder has no identity beyond its
+ * name — it exists only while some document names it. A name that stops existing leaves a
+ * stale entry, so the list is pruned against the live folders when it is written.
+ */
+export const loadCollapsedFolders = () => {
+  const value = read(KEYS.collapsedFolders);
+  return Array.isArray(value) ? value.filter((name) => typeof name === 'string') : [];
+};
+
+export const saveCollapsedFolders = (names, existing) => {
+  const live = new Set(existing || names);
+  write(KEYS.collapsedFolders, [...new Set(names)].filter((name) => live.has(name)));
 };
 
 export const saveDocIndex = (entries) => write(KEYS.docs, entries);

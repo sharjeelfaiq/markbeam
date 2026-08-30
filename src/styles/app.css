@@ -929,6 +929,19 @@ kbd {
   font-size: var(--text-xs);
 }
 
+/*
+ * A folder heading is the same row as a document, one shade quieter, with its documents
+ * indented beneath. No new component — the sheet has one row type and this is it.
+ */
+.sheet__item--folder .sheet__label {
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+}
+
+.sheet__item--nested {
+  padding-left: var(--sp-5);
+}
+
 /* The open document, marked the same way the active view mode is. */
 .sheet__item[aria-current='true'] {
   color: var(--beam);
