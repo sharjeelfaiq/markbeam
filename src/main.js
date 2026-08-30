@@ -772,32 +772,73 @@ const init = () => {
     );
 
   let scrollPreviewToHeading = (index) => {
-    /*
-     * In Editor-only view the preview pane is `display: none`, so scrolling it does nothing
-     * and the outline would appear broken. Reveal it first — jumping to a heading you cannot
-     * see is not a jump.
-     */
+    const heading = collectHeadingElements()[index];
+    if (heading) {
+      revealInPreview(heading);
+    }
+  };
+
+  /*
+   * Bring something in the preview into view, by scrolling the pane.
+   *
+   * The pane is the scroll container; `#preview-wrapper` does not scroll. Measured from
+   * bounding rects rather than `offsetTop`, because the target's `offsetParent` is not the
+   * pane — `offsetTop` would be relative to the wrong box. A small margin keeps it clear of
+   * the pane's top edge.
+   *
+   * In Editor-only view the pane is `display: none`, so scrolling it does nothing. Reveal it
+   * first: jumping to something you cannot see is not a jump.
+   */
+  let revealInPreview = (target) => {
     if (getViewMode() === 'editor') {
       setViewMode('split');
     }
 
-    // The pane is the scroll container; `#preview-wrapper` does not scroll.
     const pane = document.querySelector('.pane--preview');
-    const heading = collectHeadingElements()[index];
-    if (!pane || !heading) {
+    if (!pane || !target) {
       return;
     }
 
-    /*
-     * Measured from bounding rects rather than `offsetTop`, because the heading's
-     * `offsetParent` is not the pane — `offsetTop` would be relative to the wrong box.
-     * A small margin keeps the heading clear of the pane's top edge.
-     */
-    const top =
-      heading.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
-
+    const top = target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
     pane.scrollTo({ top: Math.max(0, top - 12), behavior: 'smooth' });
   };
+
+  /*
+   * Links into the document scroll the pane, never the page.
+   *
+   * Left alone, `<a href="#footnote-ref-1">` is fragment navigation, and the browser scrolls
+   * *every* scrollable ancestor to reveal the target — including the document root. That
+   * takes the toolbar off screen and leaves a band of empty space at the bottom, because the
+   * shell is a fixed-height grid. `body { height: 100dvh; overflow: hidden }` does not prevent
+   * it: overflow:hidden suppresses scrollbars and user scrolling, not programmatic or
+   * fragment scrolling.
+   *
+   * Not updating `location.hash` is deliberate beyond avoiding the scroll — the fragment is
+   * where share links live (`src/share.js`), so leaving `#footnote-ref-1` in the URL puts
+   * unrelated content in the one place the app treats as a document payload.
+   */
+  let handleInDocumentLink = (event) => {
+    const link = event.target.closest?.('a[href^="#"]');
+    if (!link || !outputElement?.contains(link)) {
+      return;
+    }
+
+    const id = decodeURIComponent(link.getAttribute('href').slice(1));
+    if (!id) {
+      return;
+    }
+
+    // Scoped to the preview: a link to an id elsewhere in the app is not ours to act on.
+    const target = outputElement.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+    revealInPreview(target);
+  };
+
+  outputElement?.addEventListener('click', handleInDocumentLink);
 
   let collectHeadingElements = () =>
     Array.from(outputElement?.querySelectorAll('h1, h2, h3, h4, h5, h6') || []);

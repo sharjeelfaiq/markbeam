@@ -484,6 +484,88 @@ export const suite = {
         detail: source ? `${source.href} (rel="${source.rel}")` : 'not found'
       });
 
+      /*
+       * In-document links must not scroll the app shell (T56).
+       *
+       * `marked-footnote` renders the back-reference as <a href="#footnote-ref-1">, so clicking
+       * it is fragment navigation, and the browser scrolls *every* scrollable ancestor to
+       * reveal the target — including the document root. `body { height: 100dvh; overflow:
+       * hidden }` does not prevent that: overflow:hidden suppresses scrollbars and user
+       * scrolling, not programmatic or fragment scrolling. The header went off screen.
+       *
+       * Asserted on the toolbar's position as well as scrollTop, because the toolbar leaving
+       * the viewport is the thing a person actually sees.
+       */
+      await page.evaluate(() => {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('markbeam:'))
+          .forEach((k) => localStorage.removeItem(k));
+      });
+      await page.reload({ waitUntil: 'networkidle2' });
+      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
+        timeout: 30000
+      });
+      await sleep(2500);
+
+      const jump = async (selector) => {
+        await page.evaluate((sel) => {
+          document.documentElement.scrollTop = 0;
+          document.querySelector(sel)?.click();
+        }, selector);
+        await sleep(700);
+        return page.evaluate(() => ({
+          rootScroll: Math.round(document.documentElement.scrollTop),
+          toolbarTop: Math.round(document.querySelector('.toolbar')?.getBoundingClientRect().top ?? NaN),
+          paneScroll: Math.round(document.querySelector('.pane--preview')?.scrollTop ?? -1)
+        }));
+      };
+
+      const backref = await jump('#output a[href^="#footnote-ref"]');
+      checks.push({
+        name: 'the footnote back-reference does not scroll the app shell',
+        pass: backref.rootScroll === 0 && backref.toolbarTop === 0,
+        detail: `root scrollTop ${backref.rootScroll}, toolbar top ${backref.toolbarTop}, pane ${backref.paneScroll}`
+      });
+
+      const reference = await jump('#output a[href^="#footnote-1"]');
+      checks.push({
+        name: 'the footnote reference does not scroll the app shell either',
+        pass: reference.rootScroll === 0 && reference.toolbarTop === 0,
+        detail: `root scrollTop ${reference.rootScroll}, toolbar top ${reference.toolbarTop}, pane ${reference.paneScroll}`
+      });
+
+      /*
+       * And it still has to *work*. A fix that swallowed the click would pass both checks
+       * above while making the arrow do nothing at all.
+       *
+       * The arrow is clicked again here rather than reusing the state from above: the last
+       * jump was the *reference*, which scrolls to the footnote definition at the bottom, so
+       * measuring the reference's position at that point measures the wrong element after the
+       * wrong action. Visibility and shell-stillness are asserted together, so the check
+       * cannot pass on a build that reveals the target by scrolling the whole page.
+       */
+      const backAgain = await jump('#output a[href^="#footnote-ref"]');
+      const landed = await page.evaluate(() => {
+        const pane = document.querySelector('.pane--preview');
+        const target = document.querySelector('#output [id^="footnote-ref"]');
+        if (!pane || !target) {
+          return null;
+        }
+        const rect = target.getBoundingClientRect();
+        const paneRect = pane.getBoundingClientRect();
+        return {
+          visible: rect.top >= paneRect.top - 4 && rect.bottom <= paneRect.bottom + 4,
+          offset: Math.round(rect.top - paneRect.top)
+        };
+      });
+      checks.push({
+        name: 'the back-reference still brings its target into view, without moving the shell',
+        pass: !!landed && landed.visible && backAgain.rootScroll === 0 && backAgain.toolbarTop === 0,
+        detail: landed
+          ? `target ${landed.offset}px from the pane top, visible=${landed.visible}, root scrollTop ${backAgain.rootScroll}`
+          : 'no target found'
+      });
+
       checks.push({
         name: 'no console errors',
         pass: errors.length === 0,

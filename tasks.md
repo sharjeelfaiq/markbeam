@@ -12,7 +12,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T54 is done. New bugs go here, above P1.*
+*Empty — T54 and T56 are done. New bugs go here, above P1.*
 
 ---
 
@@ -407,6 +407,67 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T56 · A link into the document scrolled the whole app, hiding the header — 2026-08-30
+
+**Why:** reported from the welcome document. Clicking the footnote back-reference arrow —
+the one the welcome text points at, *"click the arrow to jump back up"* — took the header off
+screen and left a band of empty space at the bottom.
+
+**Root cause.** `marked-footnote` renders the arrow as `<a href="#footnote-ref-1">`, so
+clicking it is fragment navigation, and the browser scrolls **every** scrollable ancestor to
+reveal the target — including the document root.
+
+`body { height: 100dvh; overflow: hidden }` does **not** prevent that. `overflow: hidden`
+suppresses scrollbars and *user* scrolling; programmatic and fragment scrolling still work.
+That is the whole bug, and it is easy to assume otherwise.
+
+**Measured**
+
+```
+the arrow      documentElement.scrollTop  0 -> 48    toolbar top  0 -> -48
+the reference  documentElement.scrollTop  0 -> 800   toolbar top  0 -> -800
+```
+
+Not specific to footnotes: the reference jumping *down* was far worse than the arrow jumping
+back, and any hand-written `[text](#heading)` would do the same.
+
+**Fix.** The outline (T35) already scrolled the pane rather than using a fragment. That
+logic is now `revealInPreview()`, shared by both, and in-document links are intercepted in
+`#output` with `preventDefault` before the browser can act on them.
+
+`location.hash` is deliberately left alone, for a second reason beyond the scroll: the
+fragment is where share links live (`src/share.js`), so leaving `#footnote-ref-1` in the URL
+would put unrelated content in the one place the app treats as a document payload.
+
+**The check that mattered** asserts the target is revealed *and* the shell has not moved.
+Against the unfixed build it reports `visible=true, root scrollTop 48` — the old code did
+reveal the target, by scrolling the whole page. Either half alone would have passed.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com renders footnotes as plain text with no
+links at all, so there is nothing to click and nothing to compare.
+
+*On ours* — http://localhost:5173 on the welcome document. Scroll the preview to the bottom
+and click the `↩` arrow after the footnote. The preview scrolls back to the reference; the
+header stays put. Then click the `[1]` reference itself: the preview jumps down to the
+footnote, header still fixed.
+
+Checkable without looking, after clicking either:
+
+```js
+document.documentElement.scrollTop            // 0
+document.querySelector('.toolbar').getBoundingClientRect().top   // 0
+```
+
+**Residual risk, stated rather than guarded:** any *future* code that calls
+`scrollIntoView()` on something in the shell would reintroduce this, and nothing prevents
+that generically. A blanket "reset the root scroll" watchdog was considered and rejected —
+it would hide the cause instead of surfacing it, and this bug was only findable because the
+symptom was visible.
 
 ---
 
