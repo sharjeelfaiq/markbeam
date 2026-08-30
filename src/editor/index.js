@@ -1,10 +1,12 @@
 import * as monaco from 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/+esm';
+import codiconUrl from 'monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.ttf?url';
 import { defineThemes, themeFor } from './themes.js';
 
 /*
  * Monaco is loaded from a hard-pinned CDN ESM URL rather than node_modules, so Vite
  * never bundles it. The `monaco-editor` entry in package.json exists only to pin the
- * version to match this URL — keep the two in step.
+ * version to match this URL — and, since the codicon font below is imported from that
+ * package, the version now lives in three places. Keep all three in step.
  */
 
 /*
@@ -18,7 +20,32 @@ self.MonacoEnvironment = {
   }
 };
 
-export const createEditor = (resolvedTheme, { onPaletteKey } = {}) => {
+/*
+ * The icon font, self-hosted — without this every icon in the find widget is the same box.
+ *
+ * Monaco's own stylesheet asks for the font relatively: `src: url(./codicon.ttf)`. The CDN's
+ * `+esm` build inlines that CSS into JavaScript and injects it as a <style> tag at runtime,
+ * and a relative url() in an injected stylesheet resolves against **the document**, not
+ * against the CDN. So the browser fetches `/codicon.ttf` from Markbeam's own origin.
+ *
+ * That does not even fail loudly. The dev server answers with index.html — 200, ~29 KB of
+ * HTML — so there is no console error and no failed request to notice; the font simply never
+ * parses. Every codicon is a separate glyph of that one family, so they all collapse to the
+ * same missing-glyph box. The find widget is the only place this shows, because contextmenu,
+ * folding, minimap and suggestions are all disabled below.
+ *
+ * Two details make the fix work:
+ *
+ * - **Declared after Monaco's.** Same family, same descriptors, so last one wins. Monaco's CSS
+ *   is injected while its module evaluates, which is before this line runs.
+ * - **`?url` rather than a CSS url().** Vite hashes it into /assets/, which is precisely what
+ *   `isImmutable()` in `public/sw.js` serves cache-first — so the icons survive offline too.
+ */
+const codiconFace = document.createElement('style');
+codiconFace.textContent = `@font-face{font-family:"codicon";font-display:block;src:url("${codiconUrl}") format("truetype")}`;
+document.head.appendChild(codiconFace);
+
+export const createEditor = (resolvedTheme, { onPaletteKey, onSearchKey } = {}) => {
   defineThemes(monaco);
 
   const editor = monaco.editor.create(document.querySelector('#editor'), {
@@ -78,6 +105,15 @@ export const createEditor = (resolvedTheme, { onPaletteKey } = {}) => {
    */
   if (onPaletteKey) {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, onPaletteKey);
+  }
+
+  /*
+   * The same treatment for cross-document search, and for the same reason: registered only on
+   * the global handler it would work everywhere except the editor, which is where someone
+   * writing actually is. Declared in both places, as the comment above requires.
+   */
+  if (onSearchKey) {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, onSearchKey);
   }
 
   return editor;

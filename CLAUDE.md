@@ -119,7 +119,24 @@ change has to be carried into both:
 
 - **Monaco** is imported from a hard-pinned CDN ESM URL
   (`cdn.jsdelivr.net/npm/monaco-editor@0.52.2/+esm`), *not* from `node_modules`, so Vite
-  never bundles it. The `package.json` entry only pins the version to match that URL.
+  never bundles it. The `package.json` entry pins the version to match that URL **and** now
+  supplies one real asset: the codicon icon font, imported with `?url` in
+  `src/editor/index.js`. So the version lives in three places — the CDN URL, the
+  `package.json` entry, and that import resolving out of `node_modules`. Keep all three in
+  step.
+
+  **The font has to be self-hosted, and this is not cosmetic.** Monaco's own stylesheet asks
+  for it relatively (`src: url(./codicon.ttf)`), and the `+esm` build injects that CSS as a
+  `<style>` tag, so the URL resolves against *the document* rather than the CDN — the browser
+  fetches `/codicon.ttf` from our origin. That does not 404: the dev server answers with
+  `index.html` (200, ~29 KB), so there is no failed request and no console error, and the font
+  silently never parses. Every icon in the find widget is a distinct glyph of that one family,
+  so they all render as the same box. Removing the `@font-face` override brings that straight
+  back, invisibly.
+
+  Note that `document.fonts.check('16px codicon')` is **not** a usable signal here: Monaco's
+  broken face stays in the document, so the family always has one face that never loads.
+  `tests/editor.test.mjs` asserts that *some* codicon face reached `loaded` instead.
   `self.MonacoEnvironment.getWorker` returns a no-op `Proxy` — **Monaco runs with zero web
   workers**, so anything worker-backed (real markdown validation, background tokenization)
   silently does nothing.

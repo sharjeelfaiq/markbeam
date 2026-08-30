@@ -12,13 +12,13 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T31 and T32 are done. New bugs go here, above P1.*
+*Empty — T54 is done. New bugs go here, above P1.*
 
 ---
 
 ## P1 — Editor gaps
 
-### [ ] T40 · Find and replace is undiscoverable, and nothing searches across documents
+### [~] T40 · Find and replace is undiscoverable, and nothing searches across documents
 
 **Why:** Monaco's find widget already works — `src/editor/index.js` disables `contextmenu`,
 `folding` and `quickSuggestions` but never `find`, so <kbd>Ctrl</kbd>+<kbd>F</kbd> opens it
@@ -334,6 +334,75 @@ Object.keys(localStorage).filter((k) => k.includes('github'))
 reads `['markbeam:github_repo']` after a default connect — the repository is remembered, the
 token is not. Tick *remember on this device* and `markbeam:github_token` joins it.
 **Disconnect GitHub** removes it, and so does a 401.
+
+---
+
+### [x] T54 · Every icon in the find widget was the same missing glyph — 2026-08-30
+
+**Why:** reported the moment T40 made find reachable — <kbd>Ctrl</kbd>+<kbd>F</kbd> opened
+Monaco's find widget and all eleven icons in it were the same meaningless box.
+
+**Not a T40 regression.** True for as long as Monaco has been loaded from a CDN. The find
+widget is simply the only surface where Monaco icons appear, since `contextmenu`, `folding`,
+`minimap` and suggestions are all disabled in `src/editor/index.js`. T40 is what finally
+made someone open it.
+
+**Root cause.** Monaco's own stylesheet asks for the icon font relatively:
+
+```css
+src: url(./codicon.ttf) format("truetype");
+```
+
+jsdelivr's `+esm` build inlines that CSS into JavaScript and injects it as a `<style>` tag,
+and a relative `url()` in an injected stylesheet resolves against **the document** rather
+than the CDN. So the browser fetched `/codicon.ttf` from Markbeam's own origin.
+
+**It never failed loudly, which is why it lasted.** That path does not 404 — the dev server
+answers it with `index.html`: **HTTP 200, 29,229 bytes**. No failed request, no console
+error. The font simply never parsed, and every codicon is a distinct glyph of that one
+family, so they all collapsed to the same box.
+
+**Fix.** Self-host from the already-pinned package:
+
+```js
+import codiconUrl from 'monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.ttf?url';
+```
+
+and inject an `@font-face` for the family. Two properties make it work: ours is declared
+after Monaco's, and same-family faces resolve last-one-wins; and `?url` hashes it into
+`/assets/`, which is exactly what `isImmutable()` in `public/sw.js` serves cache-first.
+
+**Measured:** the built asset is `assets/codicon-DCmgc-ay.ttf`, 80,340 bytes, and the
+service worker holds it after one visit — so the icons survive offline, which was checked
+rather than assumed.
+
+**Two wrong signals, both worth recording.** The first version of the test asserted that a
+codicon request happened with a non-zero size — it **passed against the broken build**,
+because 29 KB of HTML is a non-zero size. The second asserted `document.fonts.check('16px
+codicon')` — that **fails even when the fix works**, because Monaco's broken face stays in
+the document and `check()` is only true when *every* matching face has loaded. The check now
+asks whether any codicon face reached `loaded`, and was re-proven by stashing the fix:
+`faces [error]` broken, `faces [unloaded, loaded]` fixed.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com has no editor find widget at all; it is
+a plain textarea, so there is nothing to compare against.
+
+*On ours* — http://localhost:5173, click into the editor and press <kbd>Ctrl</kbd>+<kbd>H</kbd>
+to open find with the replace row showing. Every icon should be distinct: `Aa` for
+case-sensitive, `ab` for whole word, `.*` for regex, up and down arrows for previous and next,
+find-in-selection, close, `AB` for preserve-case, and the two replace buttons. Before this
+fix they were eleven copies of one box.
+
+Checkable without looking:
+
+```js
+[...document.fonts].filter((f) => f.family === 'codicon').map((f) => f.status)
+```
+
+reads `['unloaded', 'loaded']` — Monaco's dead face, then ours. Before the fix it read
+`['error']`.
 
 ---
 

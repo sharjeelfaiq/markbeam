@@ -188,6 +188,76 @@ export const suite = {
         detail: afterReset.trim().slice(0, 32)
       });
 
+      /*
+       * The find widget's icons (T54).
+       *
+       * Monaco asks for its icon font relatively — `src: url(./codicon.ttf)` — and the CDN's
+       * `+esm` build injects that CSS as a <style> tag, so the URL resolves against *this*
+       * document rather than the CDN. The request therefore goes to Markbeam's own origin,
+       * where the dev server answers it with index.html: HTTP 200, ~29 KB, no console error,
+       * no failed request. The font silently never parses and all eleven icons in the widget
+       * render as the same missing-glyph box.
+       *
+       * Getting the *signal* right took two attempts, and both wrong versions are worth
+       * naming:
+       *
+       * - "a codicon request happened with a non-zero size" passed against the broken build,
+       *   because 29 KB of HTML is a non-zero size.
+       * - `document.fonts.check('16px codicon')` fails even when the fix works. Monaco's
+       *   broken @font-face stays in the document, so the family has two faces — ours loaded,
+       *   theirs permanently unloaded — and `check()` is only true when *every* matching face
+       *   has loaded.
+       *
+       * What actually distinguishes the two states is whether any codicon face reached
+       * `loaded`. Before the fix none can: the only face points at a URL that returns HTML.
+       */
+      await page.click('#editor');
+      await page.keyboard.down('Control');
+      await page.keyboard.press('KeyF');
+      await page.keyboard.up('Control');
+      await sleep(1000);
+
+      const icons = await page.evaluate(() => {
+        const widget = document.querySelector('.monaco-editor .find-widget');
+        const icon = widget?.querySelector('.codicon');
+
+        const faces = [];
+        document.fonts.forEach((face) => {
+          if (/codicon/i.test(face.family)) {
+            faces.push(face.status);
+          }
+        });
+
+        return {
+          widgetVisible: !!widget && widget.classList.contains('visible'),
+          count: widget ? widget.querySelectorAll('.codicon').length : 0,
+          fontFamily: icon ? getComputedStyle(icon).fontFamily : null,
+          faces,
+          anyLoaded: faces.includes('loaded'),
+          // The broken relative URL, if anything still asks for it.
+          servedFromDocumentRoot: performance
+            .getEntriesByType('resource')
+            .some((entry) => new URL(entry.name).pathname === '/codicon.ttf')
+        };
+      });
+
+      checks.push({
+        name: 'the find widget renders real icons rather than one repeated glyph',
+        pass: icons.widgetVisible && icons.count > 0 && icons.anyLoaded,
+        detail: `${icons.count} icons, font-family ${icons.fontFamily}, faces [${icons.faces.join(', ')}]`
+      });
+
+      checks.push({
+        name: 'nothing fetches the icon font from the page root any more',
+        pass: icons.anyLoaded && !icons.servedFromDocumentRoot,
+        detail: icons.servedFromDocumentRoot
+          ? 'something requested /codicon.ttf from the document root — the broken relative URL is still live'
+          : 'no page-root codicon request'
+      });
+
+      await page.keyboard.press('Escape');
+      await sleep(300);
+
       checks.push({
         name: 'no console errors',
         pass: errors.length === 0,
