@@ -3,6 +3,7 @@ import markedFootnote from 'marked-footnote';
 import DOMPurify from 'dompurify';
 import { emojiExtension } from './emoji.js';
 import { highlightExtension } from './highlight.js';
+import { definitionListExtension } from './deflist.js';
 import { displayMathExtension, inlineMathExtension } from './math.js';
 
 /*
@@ -151,7 +152,9 @@ const MARKBEAM_EXTENSIONS = [
   emojiExtension,
   highlightExtension,
   displayMathExtension,
-  inlineMathExtension
+  inlineMathExtension,
+  // Block-level, so it is consulted before the inline ones and never sees fenced code.
+  definitionListExtension
 ];
 
 /*

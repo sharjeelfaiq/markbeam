@@ -216,6 +216,35 @@
 
 /* ---------- blockquote ---------- */
 
+/*
+ * Definition lists (T43). Plain properties only: this stylesheet is re-parsed by the PDF
+ * rasteriser, and anything it cannot understand breaks export while the app looks perfect.
+ */
+.mb-md dl {
+  margin: 0 0 16px;
+}
+
+.mb-md dt {
+  margin-top: 12px;
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.mb-md dt:first-child {
+  margin-top: 0;
+}
+
+/*
+ * Indented, and with a rule down the left, so a definition reads as belonging to the term
+ * above it rather than as a new paragraph that happens to follow.
+ */
+.mb-md dd {
+  margin: 4px 0 0 20px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  color: var(--text-2);
+}
+
 .mb-md blockquote {
   margin: 0 0 1.05em;
   padding: 0.1em 0 0.1em 1.15em;

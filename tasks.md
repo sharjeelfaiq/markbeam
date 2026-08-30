@@ -18,7 +18,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-*T40 and T41 are done. T42-T44 remain.*
+*T40, T41 and T43 are done. T42 and T44 remain.*
 
 ---
 
@@ -30,15 +30,6 @@ document has no way in. StackEdit renders a `[TOC]` marker inline.
 
 **Done when:** a `[TOC]` marker renders a linked contents list in the preview, the links work,
 and it survives into the HTML and Word exports and the paginated PDF.
-
-### [ ] T43 · No definition lists
-
-**Why:** Markdown Extra parity, and the one common list type we cannot express. Small: a
-renderer extension in `src/markdown/`, in the same shape as the existing highlight and math
-extensions.
-
-**Done when:** `Term` / `: definition` renders as `<dl>`/`<dt>`/`<dd>`, survives DOMPurify,
-is styled in both themes from tokens, and appears correctly in the PDF.
 
 ### [ ] T44 · No typographic punctuation, and it must not be the default
 
@@ -376,6 +367,76 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T43 · Definition lists — 2026-08-30
+
+**Why:** Markdown Extra parity, and the one common list type Markbeam could not express.
+
+**A block-level extension** (`src/markdown/deflist.js`), unlike the inline ones beside it —
+a definition list is a block container, and inline extensions never see the line structure
+this needs.
+
+**The feature is the rejections, not the matching.** A line beginning with a colon is
+ordinary punctuation far more often than it is markup, and a greedy tokenizer quietly
+restructures any document containing a time, a ratio or a pasted YAML block. So:
+
+- the colon must be the **first non-space character of its own line**, followed by
+  whitespace — `14:30` and `3:1` are mid-line and never considered;
+- the term line must not already be a heading, quote, list item, fence or another
+  definition, which is what stops `A line ending in a colon:` followed by prose from
+  becoming a term with no definition;
+- fenced code is never reached, because marked's block lexer consumes a fence whole before
+  extensions are consulted — the same reason the highlight extension can ignore backticks.
+
+Four of the seven checks guard those cases; two cover the happy path. That ratio is the
+point.
+
+**Two of those four were vacuous on the first run** and were gated before the feature was
+written: "no false positives" and "a colon in a fence stays code" are both trivially true
+of a build with no definition lists at all. They now require at least one list to render
+first.
+
+**Measured:** baseline 4 red / 3 green, final 7/7. Terms `["Markbeam","Mermaid"]`, five
+`dt`/`dd` elements surviving DOMPurify, definitions legible in both themes
+(`rgb(169,180,198)` on `rgb(14,16,21)` dark, `rgb(71,83,95)` on white light) and indented
+from their term.
+
+**Styling note.** `src/styles/preview.css` is re-parsed by the PDF rasteriser, so the rules
+use plain properties only — anything it cannot read breaks export while the app looks
+perfect, and no visual check catches that.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com renders
+
+```
+Markbeam
+: An online Markdown editor.
+```
+
+as two plain lines of prose, the colon included as literal text. It has no definition-list
+support.
+
+*On ours* — http://localhost:5173, the same input renders a bold term with an indented
+definition beneath it, carrying a left rule. A second `: line` under the same term adds a
+second definition to it rather than starting a new list.
+
+The rejections are the interesting half, and they are checkable by hand:
+
+```
+The meeting is at 14:30 today.        -> stays prose
+Ratio 3:1 in a sentence.              -> stays prose
+A line ending in a colon:             -> stays prose, not a term
+and the next line, which is prose.
+```
+
+and inside a ```yaml fence, `key: value` stays code. Console check:
+
+```js
+document.querySelectorAll('#output dl').length   // 1 for the block above, not 4
+```
 
 ---
 
