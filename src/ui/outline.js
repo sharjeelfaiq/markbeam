@@ -9,9 +9,11 @@
  * how to find a heading in the preview or scroll to it.
  *
  * Rows are identified by their **index** in the rendered output, not by an id or a fragment.
- * marked adds no ids to headings here, and giving them some would be a new public surface —
- * anchor links, duplicate-slug rules, and ids leaking into exported HTML — for something the
- * outline does not need.
+ *
+ * Headings *do* carry ids now — T42 added slugs so `[TOC]` links could work — but this list
+ * still does not use them. An index cannot go stale between the sheet opening and a row being
+ * clicked, whereas an id can be edited away mid-session, and the outline already re-renders
+ * from the live DOM every time it opens.
  */
 
 let dialog;

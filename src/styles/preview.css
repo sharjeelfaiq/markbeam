@@ -220,6 +220,47 @@
  * Definition lists (T43). Plain properties only: this stylesheet is re-parsed by the PDF
  * rasteriser, and anything it cannot understand breaks export while the app looks perfect.
  */
+/*
+ * The contents list from `[TOC]`. Plain properties only — this stylesheet is re-parsed by the
+ * PDF rasteriser, and anything it cannot read breaks export while the app looks perfect.
+ */
+.mb-md .mb-toc {
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
+.mb-md .mb-toc ul {
+  margin: 0;
+  padding-left: 18px;
+  list-style: none;
+}
+
+.mb-md .mb-toc > ul {
+  padding-left: 0;
+}
+
+.mb-md .mb-toc li {
+  margin: 2px 0;
+}
+
+.mb-md .mb-toc a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.mb-md .mb-toc a:hover {
+  color: var(--beam);
+  text-decoration: underline;
+}
+
+.mb-md .mb-toc__empty {
+  margin: 0;
+  color: var(--text-3);
+}
+
 .mb-md dl {
   margin: 0 0 16px;
 }

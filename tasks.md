@@ -18,18 +18,9 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P1 — Editor gaps
 
-*T40, T41, T43 and T44 are done. T42 remains.*
+*Empty — T40, T41, T42, T43 and T44 are all done. New editor gaps go here.*
 
 ---
-
-### [ ] T42 · No `[TOC]`, so no export carries a table of contents
-
-**Why:** T35 added an outline, but it is *navigation* — a sheet you open, not part of the
-document. Nothing puts a contents list into the HTML, Word or PDF output, and a long exported
-document has no way in. StackEdit renders a `[TOC]` marker inline.
-
-**Done when:** a `[TOC]` marker renders a linked contents list in the preview, the links work,
-and it survives into the HTML and Word exports and the paginated PDF.
 
 ## P2 — Product
 
@@ -353,6 +344,87 @@ basic and has nothing that searches across files.
 **Not in this task:** replace *across* documents. The Done-when asked for search and open,
 and a find-and-replace that rewrites files you cannot see is a data-loss path deserving its
 own task and its own undo story.
+
+---
+
+### [x] T42 · `[TOC]`, with links that work everywhere — 2026-08-30
+
+**Why:** T35 added an *outline* — a sheet you open. Nothing put a contents list **into the
+document**, so no export had one and a long exported PDF had no way in.
+
+**It reverses a decision T35 made deliberately.** That task set `headerIds: false` and
+recorded in `src/ui/outline.js` that heading ids would be "a new public surface — anchor
+links, duplicate-slug rules, and ids leaking into exported HTML". `[TOC]` needs targets, so
+the surface is now taken on deliberately and written down in `src/markdown/slug.js`. The old
+comment is rewritten rather than left contradicting the code.
+
+**`headerIds: false` was dead code.** marked removed the option in v5 and v15 ignores it —
+`m.parse('# Hello World')` returns `<h1>Hello World</h1>` either way. The line implied a
+decision that nothing enforced. Ids now come from a `renderer.heading` override, which is the
+only thing that ever assigned them.
+
+**Duplicate slugs are the substance, not an edge case.** Two `## Notes` headings are ordinary
+in a real document; a naive slugger gives both the same id, so every link to the second one
+silently goes to the first and nothing looks broken. Measured:
+
+```
+["handbook","setup-config","notes","usage","notes-1"]
+```
+
+**Headings are collected by `walkTokens`**, which marked runs after lexing and before
+rendering — so a `[TOC]` at the top can list headings that come after it, and
+`renderer.heading` hands out ids by **position** rather than re-slugging, which is what makes
+a link and its target unable to disagree.
+
+**The PDF was not the risk I called it.** I flagged the coordinate maths as the part that
+might not hold. It is exact:
+
+```
+pxPerMm = CONTENT_WIDTH_PX / PAGE_WIDTH_MM        // 720 / 190
+page n covers content y in [start, start + pageHeightPx)
+image drawn at (MARGIN_MM, MARGIN_MM), sized PAGE_WIDTH_MM x PAGE_HEIGHT_MM
+```
+
+`RENDER_SCALE` never enters — it changes bitmap resolution, not geometry. The real constraint
+was **ordering**: the band loop mutates `content.style.marginTop`, so every rect must be
+measured before it runs. Result: **5 link annotations across 3 pages**, destinations
+`["3","3","3","3","7"]` — four entries to page 1, the second *Notes* to a later page.
+
+**Three mistakes, all mine**
+
+1. Splitting `lexer()` and `parser()` broke `marked-footnote`, which builds state during
+   `parse()` and threw `Cannot read properties of undefined`. `walkTokens` replaced it.
+2. `pages > 1` was a wrong expectation rather than a bug — `pageHeightPx` is 1049 and the
+   fixture rendered about 1000px in the sandbox, so it genuinely fitted on one page.
+3. **The suite's own download instrument broke a check.** It replaces
+   `HTMLAnchorElement.prototype.click` with a stub that does not call through, so `.click()`
+   on a contents entry did nothing and looked like a broken feature. It dispatches a real
+   event now.
+
+The pane check also read `pane 2` — two pixels into a smooth scroll — because the wait
+returned on `> 0`. It waits for the value to settle, and reads **548**.
+
+**Verify vs reference**
+
+*On the reference* — https://markdownlivepreview.com renders `[TOC]` as the literal text
+`[TOC]` and gives headings no ids at all, so there is nothing to link to.
+
+*On ours* — http://localhost:5173, with `[TOC]` under the title and a few headings, two of
+them sharing a name:
+
+1. A boxed, indented contents list appears and the marker itself is gone.
+2. Both same-named headings are listed, and they point at different sections.
+3. Clicking an entry scrolls the preview; the header does not move (T56's path).
+
+```js
+[...document.querySelectorAll('#output h1,#output h2,#output h3')].map((h) => h.id)
+// ["handbook","setup-config","notes","usage","notes-1"] — note the deduped last one
+```
+
+**Export as HTML** and the file carries both `id="setup-config"` and `href="#setup-config"`;
+Word likewise. **Export as PDF** and the entries are clickable — the suite proves the
+annotations exist and point at more than one destination, so clicking one in a real viewer is
+the one part worth doing by hand once.
 
 ---
 

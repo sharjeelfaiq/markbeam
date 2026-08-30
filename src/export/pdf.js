@@ -172,6 +172,67 @@ let groupPagesIntoBands = (pages) => {
   return bands;
 };
 
+/*
+ * Contents links, as PDF annotations.
+ *
+ * The page is a **bitmap** — html2canvas draws bands, `cropPageFromBand` cuts pages, and
+ * nothing in that path carries a link. So each `[TOC]` entry becomes a jsPDF link annotation
+ * laid over the image at the entry's own position, pointing at the page its heading landed on.
+ *
+ * The coordinate mapping is exact rather than approximate:
+ *
+ *   pxPerMm = CONTENT_WIDTH_PX / PAGE_WIDTH_MM
+ *   page n covers content y in [start, start + pageHeightPx)
+ *   the image is drawn at (MARGIN_MM, MARGIN_MM), sized PAGE_WIDTH_MM x PAGE_HEIGHT_MM
+ *
+ * `RENDER_SCALE` never enters — it changes bitmap resolution, not geometry — and short pages
+ * are padded at the bottom by `cropPageFromBand`, so a position within a page is preserved.
+ *
+ * **Measured before the band loop runs.** That loop mutates `content.style.marginTop` to shift
+ * each band into view, so any rect read during it would be offset by the band's own scroll.
+ */
+let collectTocLinks = (content, pages, pageHeightPx, pxPerMm) => {
+  const anchors = Array.from(content.querySelectorAll('.mb-toc a[href^="#"]'));
+  if (anchors.length === 0) {
+    return [];
+  }
+
+  const contentTop = content.getBoundingClientRect().top;
+  const contentLeft = content.getBoundingClientRect().left;
+
+  const pageOf = (y) => {
+    const index = pages.findIndex((page) => y >= page.start && y < page.start + pageHeightPx);
+    // A target past the last boundary belongs to the last page rather than to none.
+    return index === -1 ? pages.length - 1 : index;
+  };
+
+  const links = [];
+
+  anchors.forEach((anchor) => {
+    const id = decodeURIComponent(anchor.getAttribute('href').slice(1));
+    const target = content.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!target) {
+      return;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const top = rect.top - contentTop;
+    const sourcePage = pageOf(top);
+    const targetPage = pageOf(target.getBoundingClientRect().top - contentTop);
+
+    links.push({
+      sourcePage,
+      targetPage,
+      x: MARGIN_MM + (rect.left - contentLeft) / pxPerMm,
+      y: MARGIN_MM + (top - pages[sourcePage].start) / pxPerMm,
+      width: rect.width / pxPerMm,
+      height: rect.height / pxPerMm
+    });
+  });
+
+  return links;
+};
+
 /** Cuts one page out of a band canvas, padded to a full page so scaling stays uniform. */
 let cropPageFromBand = (bandCanvas, page, bandStart, pageHeightPx) => {
   const pageCanvas = document.createElement('canvas');
@@ -293,6 +354,8 @@ export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}
       end: Math.min(index + 1 < offsets.length ? offsets[index + 1] : totalHeight, start + pageHeightPx)
     }));
     const bands = groupPagesIntoBands(pages);
+    // Before the band loop: it shifts `content` per band, which would skew every rect.
+    const tocLinks = collectTocLinks(content, pages, pageHeightPx, pxPerMm);
 
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     let pageIndex = 0;
@@ -331,8 +394,21 @@ export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}
       }
     }
 
+    /*
+     * Applied last, because `setPage` needs the page to exist. jsPDF places the annotation on
+     * the current page, so the source page is selected first and the target given as a page
+     * number — an internal jump, not a URL.
+     */
+    tocLinks.forEach((link) => {
+      if (link.sourcePage >= pages.length || link.targetPage >= pages.length) {
+        return;
+      }
+      pdf.setPage(link.sourcePage + 1);
+      pdf.link(link.x, link.y, link.width, link.height, { pageNumber: link.targetPage + 1 });
+    });
+
     pdf.save(filenameFromTitle(title));
-    return { pages: pages.length };
+    return { pages: pages.length, links: tocLinks.length };
   } finally {
     if (sandbox && sandbox.parentNode) {
       sandbox.parentNode.removeChild(sandbox);

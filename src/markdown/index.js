@@ -5,6 +5,8 @@ import { emojiExtension } from './emoji.js';
 import { highlightExtension } from './highlight.js';
 import { definitionListExtension } from './deflist.js';
 import { applyTypography } from './typography.js';
+import { createSlugger } from './slug.js';
+import { createTocExtension } from './toc.js';
 import { displayMathExtension, inlineMathExtension } from './math.js';
 
 /*
@@ -76,11 +78,43 @@ const ALERT_MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i
  */
 let typographyEnabled = false;
 
+/*
+ * The headings of the render currently in flight, with their slugs, in document order.
+ *
+ * Set by `renderMarkdown` after lexing and before parsing, because a `[TOC]` at the top of a
+ * document has to be able to list headings that come after it — and a block tokenizer only
+ * ever sees the text from its own position onward.
+ *
+ * `headingCursor` is what keeps ids and links in agreement: `renderer.heading` takes the next
+ * slug **by position** rather than re-slugging the text. Re-slugging would work today and
+ * drift the moment the two call sites disagree about, say, how to treat an ampersand.
+ */
+let currentHeadings = [];
+let headingCursor = 0;
+let headingSlugger = null;
+
 let createRenderer = () => {
   const renderer = new Renderer();
   const renderCode = renderer.code.bind(renderer);
   const renderBlockquote = renderer.blockquote.bind(renderer);
   const renderText = renderer.text.bind(renderer);
+  const renderHeading = renderer.heading.bind(renderer);
+
+  /*
+   * Ids on every heading. marked stopped doing this itself in v5 — the `headerIds` option the
+   * parser used to set was silently ignored — so anchors, `[TOC]` links and deep links into
+   * exported HTML all depend on this override.
+   */
+  renderer.heading = (token) => {
+    const slug = currentHeadings[headingCursor]?.slug;
+    headingCursor += 1;
+
+    const html = renderHeading(token);
+    if (!slug) {
+      return html;
+    }
+    return html.replace(/^<h(\d)/, `<h$1 id="${slug}"`);
+  };
 
   /*
    * Transform the token's raw text and let marked escape the result — the reverse order
@@ -179,7 +213,8 @@ const MARKBEAM_EXTENSIONS = [
   displayMathExtension,
   inlineMathExtension,
   // Block-level, so it is consulted before the inline ones and never sees fenced code.
-  definitionListExtension
+  definitionListExtension,
+  createTocExtension(() => currentHeadings)
 ];
 
 /*
@@ -192,12 +227,31 @@ const createMarkdownParser = ({ gfm, footnotes = false }) => {
   const parser = new Marked();
   parser.setOptions({
     gfm,
-    headerIds: false,
+    /*
+     * No `headerIds` here: marked removed the option in v5 and v15 ignores it entirely, so
+     * setting it implied a decision that nothing enforced. Ids come from `renderer.heading`
+     * above, which is the only thing that actually assigns them.
+     */
     mangle: false,
     renderer: createRenderer()
   });
 
-  parser.use({ extensions: MARKBEAM_EXTENSIONS });
+  parser.use({
+    extensions: MARKBEAM_EXTENSIONS,
+    /*
+     * Runs once per token between lexing and rendering. Pushing here rather than in
+     * `renderer.heading` is what lets a `[TOC]` list headings that appear after it.
+     */
+    walkTokens: (token) => {
+      if (token.type === 'heading' && headingSlugger) {
+        currentHeadings.push({
+          depth: token.depth,
+          text: token.text,
+          slug: headingSlugger(token.text)
+        });
+      }
+    }
+  });
   if (footnotes) {
     parser.use(markedFootnote());
   }
@@ -212,16 +266,30 @@ export const renderMarkdown = (markdown, mode = 'gfm', { typography = false } = 
   const parser = mode === 'commonmark' ? commonMarkParser : gfmParser;
 
   /*
-   * Cleared in `finally`, not after the call. A parse that throws would otherwise leave the
-   * flag set, and every later render — including ones for documents whose author never turned
-   * this on — would silently curl quotes with no way to tell why.
+   * Headings are collected by the `walkTokens` hook, which marked runs after lexing and
+   * before rendering — so a `[TOC]` at the top of a document can list headings that come
+   * after it, and `renderer.heading` can hand out ids the contents links already point at.
+   *
+   * **Not by calling `lexer()` and `parser()` separately**, which was the first attempt:
+   * `marked-footnote` builds state during `parse()` and its tokenizer throws
+   * `Cannot read properties of undefined` when the pipeline is split. One tokenization also
+   * means the headings collected are exactly the ones the renderer will visit.
+   *
+   * All of it is cleared in `finally`. A parse that throws would otherwise leave the flag or
+   * the cursor set, and later renders — including ones for documents whose author never turned
+   * typography on — would misbehave with nothing to explain why.
    */
   let html;
   typographyEnabled = typography;
+  currentHeadings = [];
+  headingSlugger = createSlugger();
+  headingCursor = 0;
   try {
     html = parser.parse(markdown);
   } finally {
     typographyEnabled = false;
+    currentHeadings = [];
+    headingCursor = 0;
   }
 
   return DOMPurify.sanitize(html, {
