@@ -736,10 +736,28 @@ body[data-view='preview'] .pane--preview {
   font-size: var(--text-md);
 }
 
+/*
+ * The service picker is a real <select>, so the platform draws the arrow and the popup. Only
+ * the box needs matching: a select sizes to its own line box, which lands a couple of pixels
+ * short of the text fields beside it.
+ */
+select.sheet__input {
+  line-height: 1.5;
+}
+
 .sheet__field .sheet__input:focus {
   border-color: var(--beam-soft);
   outline: 2px solid var(--beam-glow);
   outline-offset: -1px;
+}
+
+/* The one multi-line input in the app; monospace because it holds CSS. */
+.sheet__textarea {
+  min-height: 160px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 .sheet__check {
@@ -927,6 +945,27 @@ kbd {
   flex: none;
   color: var(--text-3);
   font-size: var(--text-xs);
+}
+
+/*
+ * The undo button inside a toast. Underlined rather than boxed: a toast is transient and a
+ * second button-shaped thing beside the message reads as a dialog, which this is not.
+ */
+.toast__action {
+  margin-left: var(--sp-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--beam);
+  font-family: var(--font-mono);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.toast__action:focus-visible {
+  outline: 2px solid var(--beam);
+  outline-offset: 2px;
 }
 
 /*

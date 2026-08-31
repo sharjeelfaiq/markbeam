@@ -1,5 +1,5 @@
 ---
-description: Verify the in-progress task, mark it done in tasks.md, commit and push
+description: Verify the in-progress task, mark it done in docs/tasks.md, commit and push
 ---
 
 Finalize the task currently in progress: verify it actually works, record how to check it
@@ -7,7 +7,7 @@ against the reference site, mark it done, commit and push.
 
 ## 1. Find the in-progress task
 
-Read `tasks.md` and locate the `[~]` task.
+Read `docs/tasks.md` and locate the `[~]` task.
 
 **If there is no `[~]` task, stop and say so.** Do not pick one, do not infer one from the
 diff, do not invent one. Report what is uncommitted and let the user decide.
@@ -58,7 +58,7 @@ instead of inventing one.
 
 ## 5. Commit and push
 
-Commit code and `tasks.md` **together, in one commit**, so the ledger can never drift from
+Commit code and `docs/tasks.md` **together, in one commit**, so the ledger can never drift from
 the code it describes.
 
 Commit message in this repo's established style:

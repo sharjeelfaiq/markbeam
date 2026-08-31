@@ -1,16 +1,16 @@
 ---
-description: Pick the next task from tasks.md and complete it (stops before committing)
+description: Pick the next task from docs/tasks.md and complete it (stops before committing)
 argument-hint: "[task id, e.g. T3 — omit to take the next one]"
 ---
 
-Complete one task from `tasks.md`, thoroughly. Stop before committing — `/ship` handles
+Complete one task from `docs/tasks.md`, thoroughly. Stop before committing — `/ship` handles
 verification, the ledger and the push.
 
 Task requested: **$ARGUMENTS** (empty means take the next one).
 
 ## 1. Select
 
-Read `tasks.md`. If an id was given, take that task. Otherwise take the **first `[ ]` in
+Read `docs/tasks.md`. If an id was given, take that task. Otherwise take the **first `[ ]` in
 file order** — file order is priority order.
 
 If a `[~]` task already exists, resume that instead of starting a new one, and say so.
@@ -19,7 +19,7 @@ State which task you're taking and what "Done when" requires, before touching an
 
 ## 2. Claim it
 
-Change the task's `[ ]` to `[~]` in `tasks.md` immediately, so an interrupted session is
+Change the task's `[ ]` to `[~]` in `docs/tasks.md` immediately, so an interrupted session is
 recoverable.
 
 ## 3. Understand before changing
@@ -69,7 +69,7 @@ them**. Assertions do not catch a layout that is technically correct and visuall
 ## 7. Report and stop
 
 Summarise: what changed, the before/after test evidence, and anything you found that
-contradicts `tasks.md` or `CLAUDE.md`.
+contradicts `docs/tasks.md` or `CLAUDE.md`.
 
 **Do not commit. Do not push.** Leave the task at `[~]`.
 

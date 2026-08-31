@@ -1,5 +1,5 @@
 /*
- * The GitHub sheet: connect, then pick a file.
+ * The repository sheet: pick a service, connect, then pick a file.
  *
  * One dialog with two faces rather than two dialogs, because they are one errand — you only
  * ever connect in order to do something, and being bounced between two modals to finish a
@@ -19,6 +19,7 @@ let form;
 let list;
 let tokenInput;
 let repoInput;
+let providerInput;
 let rememberInput;
 let intro;
 let statusLine;
@@ -42,8 +43,17 @@ let renderConnect = (message) => {
     show(statusLine, Boolean(message));
   }
 
-  if (repoInput && !repoInput.value && handlers.getRepo) {
-    repoInput.value = handlers.getRepo() || '';
+  /*
+   * The service is restored before the repository, because the repository shown has to be the
+   * one belonging to that service — offering a GitHub path under GitLab is worse than showing
+   * nothing.
+   */
+  if (providerInput && handlers.getProvider) {
+    providerInput.value = handlers.getProvider();
+  }
+
+  if (repoInput && handlers.getRepo) {
+    repoInput.value = handlers.getRepo(providerInput ? providerInput.value : undefined) || '';
   }
 };
 
@@ -122,6 +132,7 @@ export const initRemote = (options) => {
   list = document.querySelector('#remote-list');
   tokenInput = document.querySelector('#remote-token');
   repoInput = document.querySelector('#remote-repo');
+  providerInput = document.querySelector('#remote-provider');
   rememberInput = document.querySelector('#remote-remember');
   intro = document.querySelector('#remote-intro');
   statusLine = document.querySelector('#remote-status');
@@ -132,12 +143,24 @@ export const initRemote = (options) => {
 
   handlers = options || {};
 
+  /*
+   * Switching service swaps the repository field to that service's own saved path. Without
+   * this the field keeps whatever the other service had, and submitting it connects the new
+   * service to a project that does not exist there.
+   */
+  providerInput?.addEventListener('change', () => {
+    if (repoInput && handlers.getRepo) {
+      repoInput.value = handlers.getRepo(providerInput.value) || '';
+    }
+  });
+
   form.addEventListener('submit', (event) => {
     event.preventDefault();
 
     const token = tokenInput ? tokenInput.value.trim() : '';
     const repo = repoInput ? repoInput.value.trim() : '';
     const remember = Boolean(rememberInput && rememberInput.checked);
+    const provider = providerInput ? providerInput.value : 'github';
 
     // Cleared immediately: the callback has it, and there is no reason for it to stay in a
     // form field where the next thing to read the DOM can find it.
@@ -145,7 +168,7 @@ export const initRemote = (options) => {
       tokenInput.value = '';
     }
 
-    handlers.onConnect?.({ token, repo, remember });
+    handlers.onConnect?.({ token, repo, remember, provider });
   });
 
   dialog.addEventListener('click', (event) => {

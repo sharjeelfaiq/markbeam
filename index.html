@@ -469,6 +469,54 @@
       <ul class="sheet__list" id="outline-list" aria-label="Jump to a heading"></ul>
     </dialog>
 
+    <!-- Publishing a Gist. Visibility is a deliberate choice with no default that could be
+         assumed: a Gist made public by accident cannot be un-published. -->
+    <dialog class="sheet" id="gist" aria-label="Publish as Gist">
+      <form class="sheet__form" id="gist-form">
+        <p class="sheet__intro">
+          Publishes this document as a Gist on the account your token belongs to.
+        </p>
+        <p class="sheet__status" id="gist-status" hidden></p>
+        <label class="sheet__field" for="gist-description">
+          <span>Description</span>
+          <input class="sheet__input" id="gist-description" type="text" autocomplete="off" />
+        </label>
+        <label class="sheet__check" for="gist-secret">
+          <input id="gist-secret" name="visibility" type="checkbox" checked />
+          <span>
+            <strong>Secret</strong> — reachable only by its link, and not listed on your
+            profile. Uncheck to publish it publicly, which cannot be undone by deleting it
+            later.
+          </span>
+        </label>
+        <button class="sheet__submit" type="submit">Publish</button>
+      </form>
+    </dialog>
+
+    <!-- Custom preview CSS. The textarea is the only multi-line input in the app; every
+         rule the user writes is scoped to the preview before it is applied. -->
+    <dialog class="sheet" id="style" aria-label="Custom preview CSS">
+      <form class="sheet__form" id="style-form">
+        <p class="sheet__intro">
+          Styles the <strong>preview</strong> and the HTML and Word exports. Every rule is
+          scoped to the preview, so it cannot restyle the editor or the toolbar.
+          <strong>The PDF ignores it</strong> — that export rasterises the page, and CSS its
+          renderer cannot read produces a blank document rather than an error.
+        </p>
+        <p class="sheet__status" id="style-status" hidden></p>
+        <label class="sheet__field" for="style-input">
+          <span>Stylesheet</span>
+          <textarea
+            class="sheet__input sheet__textarea"
+            id="style-input"
+            rows="8"
+            spellcheck="false"
+            placeholder="h1 { color: rebeccapurple; }"></textarea>
+        </label>
+        <button class="sheet__submit" type="submit">Apply</button>
+      </form>
+    </dialog>
+
     <!-- Cross-document search. The input is the palette's, the rows are every other
          sheet's; only the two-line result row is new. -->
     <dialog class="sheet" id="search" aria-label="Search all documents">
@@ -484,18 +532,30 @@
       <p class="sheet__note" id="search-note" hidden></p>
     </dialog>
 
-    <!-- GitHub sync. One dialog with two faces — connect, then pick a file — because they
-         are one errand. The token field is cleared the moment it is submitted and on close,
-         so the credential does not sit in the DOM for the rest of the session. -->
-    <dialog class="sheet" id="remote" aria-label="GitHub">
+    <!-- Repository sync. One dialog with two faces — connect, then pick a file — because
+         they are one errand. The token field is cleared the moment it is submitted and on
+         close, so the credential does not sit in the DOM for the rest of the session.
+
+         The service is a field rather than two dialogs: GitHub and GitLab want the same three
+         answers, and each keeps its own credential, so switching here does not disconnect the
+         other one. -->
+    <dialog class="sheet" id="remote" aria-label="Repository">
       <form class="sheet__form" id="remote-form">
         <p class="sheet__intro" id="remote-intro">
-          Save this document to a GitHub repository, or open one from it. Use a
-          <strong>fine-grained</strong> personal access token with <strong>Contents</strong>
-          read and write access to a <strong>single repository</strong> — that is the whole
-          permission Markbeam needs, and it bounds what a stolen token could reach.
+          Save this document to a repository, or open one from it. Markbeam needs the narrowest
+          token the service offers, and nothing more: on GitHub a
+          <strong>fine-grained</strong> token with <strong>Contents</strong> read and write on a
+          <strong>single repository</strong>; on GitLab a project access token with
+          <strong>write_repository</strong>. That bounds what a stolen token could reach.
         </p>
         <p class="sheet__status" id="remote-status" hidden></p>
+        <label class="sheet__field" for="remote-provider">
+          <span>Service</span>
+          <select class="sheet__input" id="remote-provider" name="provider">
+            <option value="github">GitHub</option>
+            <option value="gitlab">GitLab</option>
+          </select>
+        </label>
         <label class="sheet__field" for="remote-repo">
           <span>Repository</span>
           <input
@@ -515,7 +575,7 @@
             id="remote-token"
             name="token"
             type="password"
-            placeholder="github_pat_…"
+            placeholder="token"
             autocomplete="off"
             spellcheck="false"
             required />
@@ -526,7 +586,7 @@
         </label>
         <button class="sheet__submit" type="submit">Connect</button>
       </form>
-      <ul class="sheet__list" id="remote-list" aria-label="Open a file from GitHub" hidden></ul>
+      <ul class="sheet__list" id="remote-list" aria-label="Open a file from the repository" hidden></ul>
     </dialog>
 
     <!-- Autosave history. Its own sheet rather than a third list in #docs: that one is

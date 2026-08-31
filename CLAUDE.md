@@ -11,12 +11,14 @@ written from scratch to displace. **Before adding third-party code, check whethe
 licence obliges an attribution this file no longer carries.** The check is
 
 ```
-git ls-files | grep -vE "package-lock|^(CLAUDE|tasks)\.md$" \
+git ls-files | grep -vE "package-lock|^CLAUDE\.md$|^docs/tasks\.md$" \
   | xargs grep -lI -i "tanabe\|hideaki\|sindre\|sorhus"
 ```
 
-which must stay empty. The two exclusions are this file and `tasks.md`: both quote the
-names in the check itself, so without them the command always reports a false alarm.
+which must stay empty. The two exclusions are this file and `docs/tasks.md`: both quote the
+names in the check itself, so without them the command always reports a false alarm. The
+exclusions are anchored paths, so **moving either file means editing this regex** — that is how
+the ledger's move out of the repo root was caught.
 
 Legacy `com.markdownlivepreview` storage keys still exist in real users' browsers and are
 migrated on load — see `migrateLegacyStorage()` in `src/storage.js`. Those strings are a
@@ -25,15 +27,15 @@ would silently discard the work of anyone arriving from the original site.
 
 ## Workflow
 
-The backlog lives in **`tasks.md`** at the repo root, ordered by priority — file order is
-priority order. Two project commands drive it:
+The backlog lives in **`docs/tasks.md`**, ordered by priority — file order is priority
+order. Two project commands drive it:
 
 - **`/work`** — takes the next `[ ]` task (or a named one), marks it `[~]`, writes a
   regression test that must **fail against the unfixed code first**, implements, verifies,
   and stops without committing.
 - **`/ship`** — re-runs the build and suite as a hard gate, records how to verify the
   change against the reference site (markdownlivepreview.com), flips the task to `[x]`,
-  and commits `tasks.md` together with the code before pushing to `origin main`.
+  and commits `docs/tasks.md` together with the code before pushing to `origin main`.
 
 Committing the ledger with the code is deliberate: it cannot drift from what shipped.
 
@@ -77,14 +79,17 @@ src/
   openFile.js        reading and validating a dropped or picked file
   images.js          paste/drop decode, resize to WebP, base64 embed
   documentLimits.js  the 1 MiB per-document ceiling images are measured against
-  github.js          Contents API client — list, read, write. No DOM, no storage.
-  githubAuth.js      where the GitHub token lives, and for how long
+  trash.js           deleted documents and their history, kept for seven days
+  customCss.js       user stylesheet, parsed and scoped to the preview
+  github.js          Contents API client — list, read, write, Gists. No DOM, no storage.
+  gitlab.js          the same three calls against GitLab's Repository Files API
+  remoteAuth.js      where the remote tokens live, and for how long — one slot per provider
   editor/            Monaco setup + markbeam-dark/light themes
   markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
   mermaid/           lazy load, render, 150ms debounce, version guard, print copies
   export/            pdf.js (banding), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
-                     history, stamp, formatToolbar, outline, remote
+                     history, stamp, formatToolbar, outline, remote, gist, style
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -175,15 +180,27 @@ has. The alternative was an external image host, which would have broken the "no
 uploaded" promise `public/about.html` makes. Raise the cap and the history sweep stops
 meaning anything.
 
+Deleted documents go to a **separate** bucket with its own cap (`src/trash.js`: 10 entries,
+256 KiB, seven days) rather than into the history budget. Sharing one budget would mean deleting
+a document could evict the snapshots of documents still open — the loss T22 exists to prevent,
+reached from the other side.
+
 Read and write through `storage.js` anyway, not because the keys are opaque but because it
 carries the migrations, the `{ v }` envelope and the `toBoolean()` normalisation. The tests
 are the deliberate exception: they assert against real key names, which is only possible
 because the names are stable.
 
-### The GitHub token — the one credential this app holds
+### Remote tokens — the only credentials this app holds
 
-`src/githubAuth.js` owns it and is the only module that may. The rules below are security
+`src/remoteAuth.js` owns them and is the only module that may. The rules below are security
 properties, not style, and each one is a thing a later change breaks by accident:
+
+**One slot per provider, never one slot.** GitHub and GitLab hold separate tokens under
+separate keys (`markbeam:<provider>_token`). A single slot was the shape before T48, and a
+second provider turns it into a bug that stays invisible until it matters: connecting one
+silently signs you out of the other, discoverable only by trying to save and being asked to
+connect again. For the same reason `disconnect()` takes a provider and forgets only that
+one — a token GitLab rejected says nothing about a GitHub one.
 
 - **Memory by default.** The token lives in a module-scope variable and dies with the tab.
   It reaches `localStorage` only when the user ticks *remember on this device*. This is not
@@ -191,16 +208,20 @@ properties, not style, and each one is a thing a later change breaks by accident
   this origin, and DOMPurify is the only thing between that and script execution. Nothing to
   read is a better position than something to read.
 - **`Authorization` header, never a URL.** A URL reaches browser history, the `Referer` of
-  anything it links to, and every log in between. `src/github.js` builds every request; keep
-  the credential out of the path and the query.
+  anything it links to, and every log in between. `src/github.js` and `src/gitlab.js` build
+  every request; keep the credential out of the path and the query. GitLab identifies a project
+  by a URL-encoded path, so the route carries a project name — never a token.
 - **Never logged, never toasted, never in an error.** `describeFailure()` composes messages
   from the status code and GitHub's own text for exactly this reason.
 - **Never in a document.** `src/history.js` snapshots document text up to twenty times, so a
   token that leaks into the document is a token persisted twenty times over. `tests/github.test.mjs`
   seeds a token and *then* asserts its absence from documents, history and the URL — asserting
   absence before a token exists proves nothing, which is how that check would rot.
-- **A 401 disconnects.** A token GitHub has rejected is worthless and must not sit there
-  looking like a working connection.
+- **A 401 disconnects.** A token the service has rejected is worthless and must not sit
+  there looking like a working connection.
+
+Both clients are covered only by intercepted fixtures — neither has ever met the real API.
+That is T52, and it is a known gap rather than an oversight.
 
 Sync is deliberately **manual**: two palette commands, no background traffic. That is what
 makes the claim on `/about` — nothing leaves your browser unless you connect a repository —
@@ -261,6 +282,13 @@ Two failure modes shaped this design, both of which shipped at some point:
 Mermaid is force-rendered in the `'default'` theme before cloning and restored in
 `finally`; the cloned document gets light colours via `onclone`, so the PDF is always
 light-themed without the user seeing the page change.
+
+**User CSS is switched off for the duration of the export.** The sandbox carries `mb-md`,
+so a preview-scoped user stylesheet applies to it and the rasteriser re-parses it — which is
+exactly the blank-document failure described below. `exportPreviewToPdf()` disables
+`#markbeam-user-css` and restores it in `finally`. Excluded rather than validated: no allowlist
+is as trustworthy as not handing the rasteriser the sheet at all, and the `#style` sheet says
+so to the user rather than letting them discover it from a blank PDF.
 
 **`onclone` may change colours and nothing else.** Page offsets are measured against the
 live sandbox, so a rule there that alters layout moves the content away from the boundaries
@@ -352,8 +380,8 @@ after deploy. Pointing the check at one produced a hard CI failure on a deployme
 live and healthy. Likewise `--scope` takes the team **slug**, not the org id.
 
 **Documentation-only pushes do not trigger the pipeline.** `paths-ignore` on both `push` and
-`pull_request` covers `tasks.md`, `README.md`, `CLAUDE.md`, `LICENSE`, `docs/**` and
-`.gitignore`. The ledger is committed alongside every shipped task, so those pushes are
+`pull_request` covers `README.md`, `CLAUDE.md`, `LICENSE`, `docs/**` (which is where the
+ledger now lives) and `.gitignore`. The ledger is committed alongside every shipped task, so those pushes are
 frequent, and a nine-minute browser suite plus a production deploy prove nothing about them.
 
 Three things to know before editing that list:

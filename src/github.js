@@ -1,7 +1,7 @@
 /*
  * The GitHub Contents API, and nothing else.
  *
- * No DOM, no storage, no token lifetime — `src/githubAuth.js` owns the credential and hands
+ * No DOM, no storage, no token lifetime — `src/remoteAuth.js` owns the credential and hands
  * one in per call. Keeping those apart is what lets the token rules be checked by reading a
  * single small file rather than tracing the whole feature.
  *
@@ -100,6 +100,27 @@ let request = async (token, path, { method = 'GET', body } = {}) => {
   }
 
   return { ok: true, payload };
+};
+
+/**
+ * Creates a Gist. `isPublic` is required rather than defaulted, because the difference is a
+ * disclosure that cannot be withdrawn — a caller has to have decided.
+ */
+export const createGist = async (token, { filename, content, description, isPublic }) => {
+  const result = await request(token, '/gists', {
+    method: 'POST',
+    body: {
+      description: description || '',
+      public: isPublic === true,
+      files: { [filename || 'document.md']: { content } }
+    }
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return { ok: true, url: result.payload?.html_url || null, id: result.payload?.id || null };
 };
 
 /** Markdown files at the top level of the repository, newest API shape, name-sorted. */

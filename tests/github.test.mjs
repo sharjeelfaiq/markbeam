@@ -170,6 +170,7 @@ const connect = async (page, { token = TOKEN, repo = REPO, remember = false } = 
       const dialog = document.querySelector('#remote');
       const tokenInput = document.querySelector('#remote-token');
       const repoInput = document.querySelector('#remote-repo');
+      const providerInput = document.querySelector('#remote-provider');
       const rememberBox = document.querySelector('#remote-remember');
       const form = document.querySelector('#remote-form');
       if (!dialog || !tokenInput || !repoInput || !form) {
@@ -180,6 +181,10 @@ const connect = async (page, { token = TOKEN, repo = REPO, remember = false } = 
         el.value = value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
       };
+      if (providerInput) {
+        providerInput.value = 'github';
+        providerInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       set(repoInput, r);
       set(tokenInput, t);
       if (rememberBox) {
@@ -218,14 +223,14 @@ export const suite = {
       const seen = await interceptGitHub(page);
       await boot(page);
 
-      const opened = await runCommand(page, 'Save to GitHub');
+      const opened = await runCommand(page, 'Save to a repository');
       const promptShown = await page.evaluate(() => {
         const dialog = document.querySelector('#remote');
         return !!dialog && dialog.open;
       });
 
       checks.push({
-        name: 'a Save to GitHub command exists and asks to connect before doing anything',
+        name: 'a Save command exists and asks to connect before doing anything',
         pass: opened && promptShown,
         detail: opened ? `#remote open=${promptShown}` : 'no such palette command'
       });
@@ -256,7 +261,7 @@ export const suite = {
       const seen = await interceptGitHub(page);
       await boot(page, '# Local document\n\nBody to push.', 'Local');
 
-      await runCommand(page, 'Save to GitHub');
+      await runCommand(page, 'Save to a repository');
       const connected = await connect(page);
       await sleep(1200);
 
@@ -303,7 +308,7 @@ export const suite = {
       await interceptGitHub(page);
       await boot(page);
 
-      await runCommand(page, 'Save to GitHub');
+      await runCommand(page, 'Save to a repository');
       const connected = await connect(page, { remember: false });
       await sleep(1000);
 
@@ -342,7 +347,7 @@ export const suite = {
       await interceptGitHub(page);
       await boot(page);
 
-      await runCommand(page, 'Save to GitHub');
+      await runCommand(page, 'Save to a repository');
       await connect(page, { remember: true });
       await sleep(1000);
 
@@ -353,7 +358,7 @@ export const suite = {
         detail: remembered.includes(TOKEN) ? 'token persisted as asked' : 'token was not stored'
       });
 
-      const disconnected = await runCommand(page, 'Disconnect GitHub');
+      const disconnected = await runCommand(page, 'Disconnect repository');
       await sleep(800);
       const afterDisconnect = await storageDump(page);
       checks.push({
@@ -363,7 +368,7 @@ export const suite = {
           ? afterDisconnect.includes(TOKEN)
             ? 'token still stored after disconnect'
             : 'token cleared'
-          : 'no Disconnect GitHub command'
+          : 'no Disconnect command'
       });
     });
 
@@ -373,7 +378,7 @@ export const suite = {
       await interceptGitHub(page);
       await boot(page, '# Local document\n\nMust survive.', 'Local');
 
-      await runCommand(page, 'Open from GitHub');
+      await runCommand(page, 'Open from a repository');
       await connect(page);
       await sleep(1200);
 
@@ -454,7 +459,7 @@ export const suite = {
         window.__pwned = false;
       });
 
-      await runCommand(page, 'Open from GitHub');
+      await runCommand(page, 'Open from a repository');
       await connect(page);
       await sleep(1200);
       await page.evaluate(() => {
@@ -487,7 +492,7 @@ export const suite = {
       await boot(page, '# Leak probe\n\nSome text.', 'Leak probe');
 
       // Seed the token first — asserting absence before a token exists proves nothing.
-      await runCommand(page, 'Save to GitHub');
+      await runCommand(page, 'Save to a repository');
       await connect(page, { remember: true });
       await sleep(1200);
 
@@ -533,7 +538,7 @@ export const suite = {
       });
       await boot(page);
 
-      await runCommand(page, 'Save to GitHub');
+      await runCommand(page, 'Save to a repository');
       const offered = await connect(page);
       await sleep(1400);
 

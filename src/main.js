@@ -51,6 +51,8 @@ import {
   loadMarkdownMode,
   loadTypography,
   saveTypography,
+  loadCustomCss,
+  saveCustomCss,
   loadScrollSync,
   canPersistContent,
   saveContent,
@@ -67,14 +69,22 @@ import { initOutline, open as openOutlineSheet } from './ui/outline.js';
 // file reader as if its entries were File objects.
 import { initRemote, openConnect, openFiles as openRemoteFiles } from './ui/remote.js';
 import { initSearch, open as openSearchSheet } from './ui/search.js';
-import { listMarkdown, parseRepo, readFile, writeFile } from './github.js';
+import { rememberDeleted, restoreDeleted } from './trash.js';
+import { initStyle, open as openStyleSheet } from './ui/style.js';
+import { scopeCustomCss } from './customCss.js';
+import * as github from './github.js';
+import * as gitlab from './gitlab.js';
+import { createGist } from './github.js';
+import { initGist, open as openGistSheet, fail as gistFailed } from './ui/gist.js';
 import {
-  connect as connectGithub,
-  disconnect as disconnectGithub,
-  getRepo as getGithubRepo,
-  getToken as getGithubToken,
-  isConnected as githubConnected
-} from './githubAuth.js';
+  connect as connectRemote,
+  disconnect as disconnectRemote,
+  getActiveProvider as activeProvider,
+  getRepo as getRemoteRepo,
+  getToken as getRemoteToken,
+  isConnected as remoteConnected,
+  setActiveProvider
+} from './remoteAuth.js';
 import { initFormatToolbar } from './ui/formatToolbar.js';
 import { formatStamp } from './ui/stamp.js';
 import { readMarkdownFile, titleFromFilename } from './openFile.js';
@@ -483,9 +493,20 @@ const init = () => {
     }
 
     const entry = documents.find((doc) => doc.id === activeDocId);
-    if (!window.confirm(`Delete "${entry ? entry.title : docTitle}"? This cannot be undone.`)) {
+    if (!window.confirm(`Delete "${entry ? entry.title : docTitle}"?`)) {
       return;
     }
+
+    /*
+     * Captured before anything is removed, snapshots included. Restoring the text alone would
+     * look like a recovery while still having destroyed what T22 exists for.
+     */
+    const removedId = activeDocId;
+    const kept = rememberDeleted({
+      id: removedId,
+      title: entry ? entry.title : docTitle,
+      text: loadDoc(removedId)
+    });
 
     deleteDoc(activeDocId);
     forgetHistory(activeDocId);
@@ -500,12 +521,53 @@ const init = () => {
     if (documents.length === 0) {
       activeDocId = null;
       createDocument({ silent: true });
-      toast('Document deleted');
+      announceDeletion(kept, removedId);
       return;
     }
 
     openDocument(documents[0].id);
-    toast('Document deleted');
+    announceDeletion(kept, removedId);
+  };
+
+  /*
+   * The undo lives in the toast, not in a menu: it has to be offered while the person is still
+   * looking at what they just did. Longer than the default toast for the same reason — a
+   * two-second window is not an offer.
+   *
+   * `kept` is false when the document was too large for the trash budget, and saying so is
+   * better than showing an Undo that would find nothing.
+   */
+  let announceDeletion = (kept, removedId) => {
+    if (!kept) {
+      toast('Document deleted — too large to keep a copy');
+      return;
+    }
+
+    toast('Document deleted', {
+      duration: 8000,
+      action: {
+        label: 'Undo',
+        run: () => {
+          const restored = restoreDeleted(removedId);
+          if (!restored) {
+            toastError('That document is no longer recoverable');
+            return;
+          }
+
+          saveDoc(restored.id, restored.text);
+          documents.unshift({
+            id: restored.id,
+            title: restored.title,
+            updatedAt: Date.now(),
+            folder: restored.folder
+          });
+          persistDocuments();
+          openDocument(restored.id);
+          refreshDocuments();
+          toast(`Restored "${restored.title}"`);
+        }
+      }
+    });
   };
 
   /*
@@ -861,10 +923,26 @@ const init = () => {
    */
   let pending = null;
 
-  let githubTarget = () => parseRepo(getGithubRepo());
+  /*
+   * Two clients, one errand (T48). Each provider parses its own project reference — GitHub
+   * takes `owner/repo` and nothing deeper, GitLab allows nested groups — so the parse belongs
+   * to the client rather than to a shared regex here.
+   */
+  let clients = {
+    github: { api: github, parse: github.parseRepo, label: 'GitHub' },
+    gitlab: { api: gitlab, parse: gitlab.parseProject, label: 'GitLab' }
+  };
 
-  let requireConnection = (intent, message) => {
-    if (githubConnected() && githubTarget()) {
+  let client = (provider = activeProvider()) => clients[provider] || clients.github;
+
+  let remoteTarget = (provider = activeProvider()) =>
+    client(provider).parse(getRemoteRepo(provider));
+
+  let remoteLabel = (provider = activeProvider()) => client(provider).label;
+
+  let requireConnection = (intent, message, provider = activeProvider()) => {
+    if (remoteConnected(provider) && remoteTarget(provider)) {
+      setActiveProvider(provider);
       return true;
     }
     pending = intent;
@@ -879,11 +957,12 @@ const init = () => {
    */
   let handleFailure = (result) => {
     if (result.status === 401) {
-      disconnectGithub();
+      // Only the provider that rejected us — a bad GitLab token says nothing about a GitHub one.
+      disconnectRemote();
       openConnect(result.reason);
       return;
     }
-    toastError(result.reason || 'GitHub request failed');
+    toastError(result.reason || `${remoteLabel()} request failed`);
   };
 
   /** `My notes.md` from the document title, since that is what the user will look for. */
@@ -895,11 +974,11 @@ const init = () => {
     }
 
     const path = remoteFilename();
-    toast(`Saving ${path} to GitHub…`);
+    toast(`Saving ${path} to ${remoteLabel()}…`);
 
-    const result = await writeFile(
-      getGithubToken(),
-      githubTarget(),
+    const result = await client().api.writeFile(
+      getRemoteToken(),
+      remoteTarget(),
       path,
       editor.getValue(),
       `Update ${path} from Markbeam`
@@ -910,7 +989,58 @@ const init = () => {
       return;
     }
 
-    toast(`Saved ${path} to GitHub`);
+    toast(`Saved ${path} to ${remoteLabel()}`);
+  };
+
+  /*
+   * Publishing a Gist reuses T37's connection wholesale — same token, same client, same rules.
+   * It requires a repository connected only because that is where the token lives; the Gist
+   * itself belongs to the account rather than to the repository.
+   */
+  let publishGist = () => {
+    // Named explicitly: a Gist is a GitHub thing, so a GitLab connection cannot stand in.
+    if (!requireConnection('gist', null, 'github')) {
+      return;
+    }
+    openGistSheet(docTitle);
+  };
+
+  let createGistFromDocument = async ({ description, isPublic }) => {
+    toast('Publishing to a Gist…');
+
+    const result = await createGist(getRemoteToken('github'), {
+      filename: filenameFromTitle(docTitle, 'md'),
+      content: editor.getValue(),
+      description: description || docTitle,
+      isPublic
+    });
+
+    if (!result.ok) {
+      if (result.status === 401) {
+        disconnectRemote('github');
+        openConnect(result.reason);
+        return;
+      }
+      // Reported on the sheet rather than in a toast: the next thing to do is try again.
+      gistFailed(result.reason || 'Could not create the Gist');
+      return;
+    }
+
+    /*
+     * The URL is copied, not merely shown. It is the entire point of publishing, and a link
+     * someone has to retype out of a disappearing toast is not a link they have been given.
+     */
+    if (result.url) {
+      try {
+        await navigator.clipboard.writeText(result.url);
+        toast(`Gist published — link copied (${isPublic ? 'public' : 'secret'})`);
+        return;
+      } catch (error) {
+        // Clipboard denied; the URL still has to reach them somehow.
+      }
+    }
+
+    toast(result.url ? `Gist published: ${result.url}` : 'Gist published');
   };
 
   let openFromGithub = async () => {
@@ -918,7 +1048,7 @@ const init = () => {
       return;
     }
 
-    const result = await listMarkdown(getGithubToken(), githubTarget());
+    const result = await client().api.listMarkdown(getRemoteToken(), remoteTarget());
     if (!result.ok) {
       handleFailure(result);
       return;
@@ -933,7 +1063,7 @@ const init = () => {
    * path, and the remote copy is not automatically the newer one.
    */
   let importFromGithub = async (fileEntry) => {
-    const result = await readFile(getGithubToken(), githubTarget(), fileEntry.path);
+    const result = await client().api.readFile(getRemoteToken(), remoteTarget(), fileEntry.path);
     if (!result.ok) {
       handleFailure(result);
       return;
@@ -947,21 +1077,28 @@ const init = () => {
     createDocument({ silent: true });
     setValue(result.text);
     setDocTitle(titleFromFilename(fileEntry.name));
-    toast(`Opened ${fileEntry.name} from GitHub`);
+    toast(`Opened ${fileEntry.name} from ${remoteLabel()}`);
   };
 
-  let onGithubConnect = ({ token, repo, remember }) => {
-    const target = parseRepo(repo);
+  let onRemoteConnect = ({ token, repo, remember, provider }) => {
+    const chosen = clients[provider] ? provider : 'github';
+    const target = client(chosen).parse(repo);
     if (!target) {
-      openConnect('That does not look like owner/repository');
+      openConnect(
+        chosen === 'gitlab'
+          ? 'That does not look like a GitLab project path, e.g. group/project'
+          : 'That does not look like owner/repository'
+      );
       return;
     }
     if (!token) {
-      openConnect('A token is needed to reach GitHub');
+      openConnect(`A token is needed to reach ${remoteLabel(chosen)}`);
       return;
     }
 
-    connectGithub(token, `${target.owner}/${target.repo}`, { remember });
+    // Normalised back to a string, so what is stored is what the field shows next time.
+    const path = chosen === 'gitlab' ? target.path : `${target.owner}/${target.repo}`;
+    connectRemote(chosen, token, path, { remember });
 
     const intent = pending;
     pending = null;
@@ -969,12 +1106,15 @@ const init = () => {
       saveToGithub();
     } else if (intent === 'open') {
       openFromGithub();
+    } else if (intent === 'gist') {
+      publishGist();
     }
   };
 
-  let disconnectFromGithub = () => {
-    disconnectGithub();
-    toast('Disconnected from GitHub');
+  let disconnectFromRemote = () => {
+    const label = remoteLabel();
+    disconnectRemote();
+    toast(`Disconnected from ${label}`);
   };
 
   /*
@@ -1033,6 +1173,37 @@ const init = () => {
     editor.revealLineInCenter(hit.line);
     editor.focus();
   };
+
+  /*
+   * Custom preview CSS.
+   *
+   * Injected as one <style> element with a known id, because the PDF exporter has to be able
+   * to switch it off: html2canvas-pro re-parses whatever CSS applies, and a rule it cannot
+   * read yields a blank page with no error at all. The id is the handle for that.
+   *
+   * The scoped text contains `.mb-md`, which is one of the markers `collectStyles()` looks
+   * for — so the HTML and Word exports pick it up without any further plumbing.
+   */
+  let customCssRaw = loadCustomCss();
+
+  let applyCustomCss = (css) => {
+    let element = document.getElementById('markbeam-user-css');
+    if (!element) {
+      element = document.createElement('style');
+      element.id = 'markbeam-user-css';
+      document.head.appendChild(element);
+    }
+    element.textContent = css;
+  };
+
+  if (customCssRaw) {
+    const initial = scopeCustomCss(customCssRaw);
+    if (initial.ok) {
+      applyCustomCss(initial.css);
+    }
+  }
+
+  let openCustomCss = () => openStyleSheet();
 
   // ---------- actions ----------
 
@@ -1339,10 +1510,12 @@ const init = () => {
       run: findAndReplace
     },
     { title: 'Search all documents', keys: 'mod+shift+f', run: openSearch },
+    { title: 'Custom preview CSS…', run: openCustomCss },
     { title: 'Document outline', run: openOutline },
-    { title: 'Save to GitHub…', run: saveToGithub },
-    { title: 'Open from GitHub…', run: openFromGithub },
-    { title: 'Disconnect GitHub', run: disconnectFromGithub },
+    { title: 'Save to a repository…', run: saveToGithub },
+    { title: 'Open from a repository…', run: openFromGithub },
+    { title: 'Publish as Gist…', run: publishGist },
+    { title: 'Disconnect repository', run: disconnectFromRemote },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
     { title: 'Clear document', run: clearDocument },
@@ -1399,14 +1572,27 @@ const init = () => {
   migrateSingleDocument();
   documents = loadDocIndex() || [];
 
+  initGist({ onPublish: createGistFromDocument });
+
+  initStyle({
+    getCss: () => customCssRaw,
+    onApply: ({ raw, css }) => {
+      customCssRaw = raw;
+      saveCustomCss(raw);
+      applyCustomCss(css);
+      toast(css ? 'Preview stylesheet applied' : 'Preview stylesheet cleared');
+    }
+  });
+
   initSearch({
     getDocuments: searchCorpus,
     onPick: goToHit
   });
 
   initRemote({
-    getRepo: getGithubRepo,
-    onConnect: onGithubConnect,
+    getProvider: activeProvider,
+    getRepo: getRemoteRepo,
+    onConnect: onRemoteConnect,
     onPick: importFromGithub
   });
 

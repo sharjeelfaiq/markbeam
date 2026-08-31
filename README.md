@@ -83,7 +83,7 @@ inconsistent dependency loading, and the reason the PDF exporter depends on
 `html2canvas-pro` rather than `html2canvas`. Each is documented there with the failure that
 produced it.
 
-The backlog lives in [`tasks.md`](tasks.md), ordered by priority, with the root cause and
+The backlog lives in [`docs/tasks.md`](docs/tasks.md), ordered by priority, with the root cause and
 measurements kept for every completed item.
 
 ## Licence

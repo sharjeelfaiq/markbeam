@@ -35,7 +35,9 @@ const KEYS = {
   docTitle: 'doc_title',
   markdownMode: 'markdown_mode',
   collapsedFolders: 'folders_collapsed',
-  typography: 'typography'
+  typography: 'typography',
+  trash: 'trash',
+  customCss: 'custom_css'
 };
 
 let read = (key) => {
@@ -388,6 +390,35 @@ export const historyDocIds = () => {
   }
 };
 
+/*
+ * Deleted documents, awaiting restore. One key holding the whole list rather than one per
+ * entry: the trash is written only when something is deleted or restored, so rewriting a
+ * small array costs nothing, and it keeps the sweep in `src/trash.js` able to see the whole
+ * budget at once.
+ */
+export const loadCustomCss = () => {
+  const value = read(KEYS.customCss);
+  return typeof value === 'string' ? value : '';
+};
+
+export const saveCustomCss = (value) => write(KEYS.customCss, String(value || ''));
+
+export const loadTrash = () => {
+  const value = read(KEYS.trash);
+  return Array.isArray(value) ? value : [];
+};
+
+export const saveTrash = (entries) => write(KEYS.trash, entries);
+
+export const trashBytes = () => {
+  try {
+    const raw = localStorage.getItem(`${PREFIX}${KEYS.trash}`);
+    return raw ? raw.length : 0;
+  } catch (error) {
+    return 0;
+  }
+};
+
 /** Rough bytes held by history — key plus value, which is what the quota actually counts. */
 export const historyBytes = () => {
   try {
@@ -400,49 +431,56 @@ export const historyBytes = () => {
 };
 
 /*
- * GitHub sync (T37).
+ * Remote sync credentials (T37, made per-provider by T48).
  *
- * The repository name and the token are separated on purpose. `owner/repo` is not a secret
- * and is always remembered; the token is written here **only** when the user ticks "remember
- * on this device", and `src/githubAuth.js` is the only caller. See that module for why the
+ * The project name and the token are separated on purpose. `owner/repo` is not a secret and
+ * is always remembered; the token is written here **only** when the user ticks "remember on
+ * this device", and `src/remoteAuth.js` is the only caller. See that module for why the
  * default is memory-only.
  *
- * The token is deliberately not wrapped in the `{ v }` envelope helpers below — it is read
+ * **The provider is part of the key**, so a GitHub and a GitLab connection cannot overwrite
+ * one another. A single slot would mean connecting one silently signs you out of the other,
+ * and the only way to find out is to try to save and be asked to connect again.
+ *
+ * The token is deliberately not wrapped in the `{ v }` envelope helpers above — it is read
  * and written as a bare string through its own pair of functions, so a future change to the
  * generic helpers cannot start round-tripping a credential through anything unexpected.
+ *
+ * `markbeam:github_token` and `markbeam:github_repo` are the names T37 already wrote, so an
+ * existing connection keeps working without a migration.
  */
-const GITHUB_TOKEN_KEY = `${PREFIX}github_token`;
+const PROVIDER_TOKEN_KEY = (provider) => `${PREFIX}${provider}_token`;
 
-export const loadGithubRepo = () => {
-  const value = read('github_repo');
-  return typeof value === 'string' && value ? value : null;
-};
-
-export const saveGithubRepo = (value) => write('github_repo', value);
-
-export const loadGithubToken = () => {
+export const loadProviderToken = (provider) => {
   try {
-    const value = localStorage.getItem(GITHUB_TOKEN_KEY);
+    const value = localStorage.getItem(PROVIDER_TOKEN_KEY(provider));
     return typeof value === 'string' && value ? value : null;
   } catch (error) {
     return null;
   }
 };
 
-export const saveGithubToken = (value) => {
+export const saveProviderToken = (provider, value) => {
   try {
-    localStorage.setItem(GITHUB_TOKEN_KEY, value);
+    localStorage.setItem(PROVIDER_TOKEN_KEY(provider), value);
     return true;
   } catch (error) {
-    // Never warn: the message would be attached to the credential write.
+    // Never warned: the message would be attached to the credential write.
     return false;
   }
 };
 
-export const clearGithubToken = () => {
+export const clearProviderToken = (provider) => {
   try {
-    localStorage.removeItem(GITHUB_TOKEN_KEY);
+    localStorage.removeItem(PROVIDER_TOKEN_KEY(provider));
   } catch (error) {
     // storage unavailable; nothing to clear
   }
 };
+
+export const loadProviderRepo = (provider) => {
+  const value = read(`${provider}_repo`);
+  return typeof value === 'string' && value ? value : null;
+};
+
+export const saveProviderRepo = (provider, value) => write(`${provider}_repo`, value);

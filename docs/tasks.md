@@ -24,48 +24,7 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Product
 
-### [ ] T45 · Deleting a document destroys its history with it
-
-**Why:** `deleteDocument()` calls `forgetHistory()`, so a single confirm removes the document
-*and* every autosaved version of it. That is exactly the loss T22 was built to prevent, reached
-by a different route — and unlike an accidental edit, nothing can bring it back.
-
-**Done when:** a deleted document is recoverable for a bounded window, the recovery is
-discoverable at the moment of deletion rather than only in a menu, and the byte budget still
-holds so a trash cannot exhaust the quota `src/history.js` sweeps against.
-
-### [ ] T46 · Exports have a fixed appearance
-
-**Why:** StackEdit offers Handlebars templates for custom output. Ours are fixed: one HTML
-style, one Word style, one PDF layout. Anyone with a house style has to post-process.
-
-**The trap, and it is a real one:** `src/styles/preview.css` is re-parsed by the PDF rasteriser.
-CSS the rasteriser cannot understand breaks export completely while the app itself looks
-perfect, and no visual check catches it — this is why the dependency is `html2canvas-pro`.
-User-supplied CSS must therefore never reach the PDF path unvalidated.
-
-**Done when:** a user stylesheet can change the preview and the HTML export, the PDF path is
-either covered or explicitly excluded with the reason stated, and a stylesheet that would break
-export is refused rather than silently producing a blank document.
-
-### [ ] T47 · Publish to a Gist
-
-**Why:** the smallest real extension of T37 — same token, same client, same auth model, no new
-credential and no new trust decision. A share link carries the document in the URL; a Gist gives
-it an address that survives being pasted into a chat window.
-
-**Done when:** the open document can be published as a Gist, public or secret is an explicit
-choice rather than a default, and the resulting URL is offered for copying.
-
-### [ ] T48 · GitLab as a second sync target
-
-**Why:** token-based exactly like GitHub, so it needs no callback server and no OAuth — the
-constraint that keeps Drive and Dropbox out of scope. Second-largest audience for a
-developer-facing editor after GitHub.
-
-**Done when:** a GitLab project can be connected and used for the same save and open flow as
-T37, the two connections coexist without one clobbering the other, and the token rules in
-`CLAUDE.md` hold for both.
+*Empty — T45, T46, T47 and T48 are all done. New product work goes here.*
 
 ---
 
@@ -184,6 +143,127 @@ free and the entry should be revisited.
 
 ## Completed
 
+### [x] T45 · Deleting a document destroys its history with it — 2026-08-31
+
+**Root cause:** `deleteDocument()` called `forgetHistory()`, so one confirm removed the document
+*and* every autosaved version of it. That is exactly the loss T22 was built to prevent, reached by
+a different route — and unlike an accidental edit, nothing could bring it back.
+
+**Shape.** `src/trash.js` is a **separate** bucket with its own cap: 10 entries, 256 KiB, seven
+days. Sharing the history budget would have meant deleting one document could evict the snapshots
+of documents still open — the same loss from the other side. `src/ui/toasts.js` grew
+`toast(message, { action })` so the offer to undo appears at the moment of deletion rather than
+only in a menu; a deletion nobody notices is one nobody goes looking for.
+
+**Measured:** undo restores the text *and* 3 autosave snapshots. Seeded 12 oversized entries and
+the sweep left 251 KB in 6, against a 256 KB budget.
+
+### [x] T46 · Exports have a fixed appearance — 2026-08-31
+
+**Why:** StackEdit offers templates for custom output; ours were fixed — one HTML style, one Word
+style, one PDF layout, so any house style meant post-processing.
+
+**The refusal is the interesting half.** `this is not css at all {{{` is *not* a parse error to
+CSSOM — it reads as a selector with an empty body, so a naive "did it parse?" check accepts it and
+replaces a working stylesheet with nothing. `src/customCss.js` drops declaration-less rules, which
+is what makes nonsense refusable. `@import` is dropped too: it is a network fetch initiated from a
+stylesheet, and the promise on `/about` is that nothing leaves the browser.
+
+**The PDF is excluded, deliberately, and the sheet says so.** The export sandbox carries `mb-md`,
+so preview-scoped user CSS applies to it and html2canvas-pro re-parses it — precisely the
+blank-document failure `CLAUDE.md` warns about, and the reason the dependency is the `-pro` fork.
+`exportPreviewToPdf()` disables `#markbeam-user-css` and restores it in `finally`. Excluded rather
+than validated: no allowlist is as trustworthy as not handing the rasteriser the sheet at all.
+
+**Measured:** the stylesheet is off at page-render time (`samples at page-render time: [true]`) and
+back on afterwards (`disabled now=false, pdf 46 KB`). Nonsense is refused with *"No usable CSS
+rules were found in that stylesheet"* and the previous rule stays in effect.
+
+### [x] T47 · Publish to a Gist — 2026-08-31
+
+**Why:** the smallest real extension of T37 — same token, same client, same auth model, no new
+credential and no new trust decision. A share link carries the document in the URL; a Gist gives it
+an address that survives being pasted into a chat window.
+
+**Why `isPublic` is a required argument, not a defaulted one.** A Gist published publicly by
+accident cannot be un-published by deleting it — the URL has already been handed out. `createGist`
+in `src/github.js` therefore forces the caller to have decided, and the sheet ticks **Secret** by
+default and says in words that publishing publicly cannot be undone later.
+
+The URL is copied to the clipboard rather than merely shown. It is the entire point of publishing,
+and a link someone has to retype out of a disappearing toast is not a link they have been given;
+the toast carries the URL itself when the clipboard is denied.
+
+**Measured:** `POST https://api.github.com/gists`, `public=false` when secret was chosen, token in
+the header and not the URL, clipboard `["https://gist.github.com/octocat/abc123"]`.
+
+### [x] T48 · GitLab as a second sync target — 2026-08-31
+
+**Why:** token-based exactly like GitHub, so it needs no callback server and no OAuth — the
+constraint that keeps Drive and Dropbox out of scope.
+
+**The reversal worth recording.** T37 shipped a **single** credential slot. A second provider turns
+that into a bug that stays invisible until it matters: connecting GitLab would silently sign you
+out of GitHub, discoverable only by trying to save and being asked to connect again.
+`src/githubAuth.js` is gone; `src/remoteAuth.js` holds one slot per provider, and `disconnect()`
+forgets only the provider that failed — a token GitLab rejected says nothing about a GitHub one.
+GitHub keeps the exact key names T37 wrote, so an existing connection needs no migration.
+
+**GitLab's two verbs.** `writeFile` tries `PUT` and falls back to `POST`, because GitLab splits
+create and update and answers a POST onto an existing file with **400**, not 404. The reverse order
+would surface "already exists" as the failure for the ordinary case. Two clients rather than one
+abstraction: the APIs disagree on how a project is identified, how a path is encoded, which verb
+creates, and where the branch is named — a shared wrapper would be mostly branches.
+
+**A test broke, and it is the second time this session for the same reason.** The commands were
+renamed to `Save to a repository…` / `Open from a repository…` / `Disconnect repository`, because
+"Save to GitHub" is wrong once a GitLab project can be the target. `tests/github.test.mjs` drives
+the palette by literal title, so all of it went red with `no such palette command`. The needles
+moved and its `connect` helper now pins the picker to `github`; 19/19 again, with the
+briefly-vacuous checks substantive once more (`imported=true`, 2 authed requests, real toasts).
+**A suite that encodes a product string as its driver will break on any rename — that is working
+as intended, but only if the rename is the thing you then verify.**
+
+**Measured:** `PUT .../projects/octocat%2Fhandbook/repository/files/gitlab-fixture.md`;
+`github token intact=true, github repo={"v":"octocat/notes"}, gitlab repo={"v":"octocat/handbook"}`;
+`url leak=false`; GitLab token not persisted by default.
+
+**Still open:** both sync clients are proven against intercepted fixtures only. Neither has met the
+real API — that is **T52**, and GitLab now inherits exactly that gap.
+
+### Verify vs reference — T45, T46, T47, T48
+
+All four are features the reference does not have, so the comparison is absence versus presence
+rather than a behaviour difference.
+
+*On the reference* — https://markdownlivepreview.com is a single-document pane. There is no
+document list, so nothing to delete or restore (T45); no styling control, so the preview has one
+fixed appearance (T46); and no account, token or sync of any kind, so neither Gist publishing (T47)
+nor any repository target (T48) exists to compare against.
+
+*On ours* — http://localhost:5173:
+
+- **T45.** Create a second document, type into it so it autosaves, then delete it. The toast carries
+  an **Undo**; click it and the document returns *with its history*. Confirm the snapshots came
+  back, not just the text — the text alone would look identical:
+  ```js
+  JSON.parse(localStorage.getItem(`markbeam:history:${id}`)).v.length  // > 0 after Undo
+  ```
+- **T46.** Palette → the custom CSS sheet. Paste `h1 { color: rebeccapurple; }` and Apply — the
+  preview heading changes, the editor and toolbar do not. Then paste `this is not css at all {{{`
+  and Apply: it is **refused** and the previous sheet stays. Export HTML and the rule is in the
+  file. Export **PDF** and it is deliberately absent — the documented exclusion, not a bug.
+- **T47.** Needs a GitHub token. Palette → *Publish as Gist…*. **Secret** is ticked by default. On
+  success the URL is on the clipboard, and in the toast if the clipboard was denied.
+- **T48.** Palette → *Save to a repository…*. The sheet leads with a **Service** field. Pick GitLab,
+  enter `group/project` and a `write_repository` token, save. Switch back to GitHub and the
+  repository box repopulates with the GitHub path — the two are stored separately:
+  ```js
+  Object.keys(localStorage).filter((k) => /^markbeam:git(hub|lab)_repo$/.test(k))
+  // ["markbeam:github_repo", "markbeam:gitlab_repo"] — both present, neither clobbered
+  ```
+  Watch the network panel: the token is in the `Authorization` header and never in the URL.
+
 ### [x] T37 · Sync between devices, via GitHub — 2026-08-29
 
 **Why:** documents lived in one browser profile and could only leave as a share link or an
@@ -211,6 +291,7 @@ whatever is in localStorage is readable. Nothing to read beats something to read
 
 - `src/github.js` — Contents API client. No DOM, no storage, no token lifetime.
 - `src/githubAuth.js` — the credential, and the only importer of the token storage functions.
+  *(Superseded by `src/remoteAuth.js` in T48, which holds one slot per provider.)*
 - `src/ui/remote.js` — one sheet with two faces, connect then pick a file.
 - `src/storage.js` — repo name in the usual envelope; the token in its own bare-string pair,
   deliberately outside the generic helpers.

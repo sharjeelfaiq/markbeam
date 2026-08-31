@@ -318,6 +318,20 @@ export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}
 
   const restoreDarkMermaid = getTheme() === 'dark';
   let sandbox = null;
+  /*
+   * User CSS is excluded from the PDF, deliberately.
+   *
+   * The sandbox carries `mb-md`, so a user stylesheet scoped to the preview applies to it —
+   * and html2canvas-pro re-parses whatever applies. A rule it cannot understand produces a
+   * blank document with no error, which is the failure mode `CLAUDE.md` warns about and the
+   * reason the dependency is the `-pro` fork in the first place. Switching the sheet off for
+   * the duration is the only way to be sure a pasted stylesheet cannot break export.
+   */
+  const userCss = document.getElementById('markbeam-user-css');
+  const userCssWasEnabled = userCss ? !userCss.disabled : false;
+  if (userCss) {
+    userCss.disabled = true;
+  }
 
   try {
     // Mermaid bakes theme colours into the SVG, so re-render light before cloning.
@@ -410,6 +424,9 @@ export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}
     pdf.save(filenameFromTitle(title));
     return { pages: pages.length, links: tocLinks.length };
   } finally {
+    if (userCss && userCssWasEnabled) {
+      userCss.disabled = false;
+    }
     if (sandbox && sandbox.parentNode) {
       sandbox.parentNode.removeChild(sandbox);
     }
