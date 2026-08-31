@@ -95,6 +95,102 @@ export const suite = {
       detail: leftover ? `${PROBE} still exists` : 'cleaned up'
     });
 
+    // ---------- one canonical host ----------
+
+    /*
+     * The site moved to `markbeam.app` (T58), and a domain move is spread across files that
+     * cannot reference each other: the canonical, OG and JSON-LD URLs in `index.html`, the
+     * same three in `public/about.html`, `robots.txt`, `sitemap.xml`, the CI smoke target, and
+     * prose in the README and the welcome document. Miss one and nothing breaks visibly — the
+     * old host still serves — while a crawler is told the platform subdomain is the real
+     * address.
+     *
+     * `docs/tasks.md` is excluded on purpose: its entries record checks run against the site
+     * as it was, and editing history to say something that was not true then is worse than a
+     * stale string.
+     */
+    const OLD_HOST = 'markbeam.vercel.app';
+    const CANONICAL = 'https://markbeam.app';
+
+    /*
+     * Files that a visitor or a crawler is served, where the old host may not appear at all.
+     * `vercel.json`, `.github/workflows/ci.yml`, `CLAUDE.md` and `docs/seo-brief.md` are
+     * absent from this list on purpose — each *must* name the old host, to redirect it, to
+     * assert the redirect, or to explain it. They get the positive checks below instead, which
+     * is the stronger statement anyway: not "the string is gone" but "the redirect is wired".
+     */
+    const SERVED_SURFACE = [
+      'index.html',
+      'README.md',
+      'public/about.html',
+      'public/markdown-viewer.html',
+      'public/markdown-to-pdf.html',
+      'public/mermaid-diagrams.html',
+      'public/markdown-slides.html',
+      'public/page.css',
+      'public/robots.txt',
+      'public/sitemap.xml',
+      'public/manifest.webmanifest',
+      'src/defaultDocument.js'
+    ];
+
+    const stragglers = [];
+    for (const path of SERVED_SURFACE) {
+      try {
+        const body = await readFile(path, 'utf8');
+        if (body.includes(OLD_HOST)) {
+          stragglers.push(path);
+        }
+      } catch (error) {
+        stragglers.push(`${path} (unreadable: ${error.code || error.message})`);
+      }
+    }
+
+    checks.push({
+      name: 'nothing served still points at the old host',
+      pass: stragglers.length === 0,
+      detail: stragglers.length
+        ? `${OLD_HOST} in ${stragglers.join(', ')}`
+        : `${SERVED_SURFACE.length} files clean`
+    });
+
+    /*
+     * And the old host is actually caught rather than merely unmentioned. Asserted against
+     * the parsed config, not a grep: a redirect with the right strings in the wrong keys
+     * reads fine and does nothing.
+     */
+    let redirect = null;
+    let configError = null;
+    try {
+      const config = JSON.parse(await readFile('vercel.json', 'utf8'));
+      redirect = (config.redirects || []).find((rule) =>
+        (rule.has || []).some((cond) => cond.type === 'host' && cond.value === OLD_HOST)
+      );
+    } catch (error) {
+      configError = error.message;
+    }
+
+    checks.push({
+      name: 'the old host is permanently redirected to the canonical one',
+      pass:
+        !!redirect &&
+        redirect.permanent === true &&
+        String(redirect.destination || '').startsWith(CANONICAL),
+      detail: configError
+        ? `vercel.json unreadable: ${configError}`
+        : redirect
+          ? `-> ${redirect.destination} (permanent=${redirect.permanent})`
+          : 'no redirect keyed on the old host'
+    });
+
+    const workflow = await readFile('.github/workflows/ci.yml', 'utf8').catch(() => '');
+    checks.push({
+      name: 'CI smoke-tests the canonical host',
+      pass: new RegExp(`PRODUCTION_URL:\\s*${CANONICAL}\\s*$`, 'm').test(workflow),
+      detail:
+        (workflow.match(/PRODUCTION_URL:.*/) || ['no PRODUCTION_URL in the workflow'])[0].trim()
+    });
+
     return checks;
   }
 };

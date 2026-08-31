@@ -2,74 +2,151 @@
  * The welcome document — the only thing a first-time visitor reads, so it has two jobs at
  * once: name every feature, and demonstrate the syntax while doing it.
  *
- * Two constraints, both enforced by the suites:
+ * It is a tour rather than a greeting because nothing else in the app lists what the app can
+ * do. The palette holds every command but only shows them one search at a time, and a feature
+ * nobody knows about may as well not have shipped.
+ *
+ * Three constraints, two enforced by the suites:
  *
  * - It must contain "Welcome to Markbeam" (`tests/editor.test.mjs` checks Reset restores it).
  * - It must contain **exactly one** Mermaid fence (`tests/mermaid.test.mjs` counts one svg).
+ * - **No `$…$` pair anywhere, including inside backticks.** `hasMath()` in
+ *   `src/markdown/math.js` tests the raw source and knows nothing about code spans, so even
+ *   ``$x^2$`` inside backticks pulls the KaTeX chunk. Measured, after writing it that way and
+ *   watching KaTeX load anyway. `/about` promises Markbeam "does not fetch things you have
+ *   never used", so the maths line describes the syntax in prose instead.
  *
- * And one that is not enforced but matters more: **do not demonstrate a lazily-loaded
- * feature here.** Math and emoji fetch a chunk the first time a document uses them, and
- * `/about` promises Markbeam "does not fetch things you have never used". A live formula in
- * the welcome text would make every first visit download KaTeX and quietly break that claim.
+ * Mermaid is the deliberate exception to that last rule, and predates it. `:emoji:` is not an
+ * exception at all: `loadEmoji()` runs at boot regardless of what the document contains.
  *
- * A code span is **not** enough to avoid that: `hasMath()` in `src/markdown/math.js` tests
- * the raw source and knows nothing about code spans, so even ``$x^2$`` inside backticks pulls
- * the chunk. Measured, after writing it that way and watching KaTeX load anyway. Hence the
- * maths line describes the syntax in prose rather than showing a dollar-delimited pair.
- *
- * Mermaid is the deliberate exception, and predates the rule.
+ * There is deliberately **no `---`** in here. It would render as a horizontal rule, and it
+ * would also cut the document into slides in presentation mode — a tour that presents as
+ * three unrelated decks is worse than one that presents as a single slide.
  */
 
 export const DEFAULT_DOCUMENT = `# Welcome to Markbeam
 
 Write Markdown on the left, watch it render on the right. Everything stays in your
-browser — no account, no upload.
+browser — no account, no upload, nothing to sign up for.
+
+[TOC]
 
 ## Start here
 
 | Do this | Press |
 | --- | --- |
-| Command palette — everything lives in it | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+| Command palette — every feature below lives in it | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
 | Switch editor / split / preview | <kbd>Ctrl</kbd>+<kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> |
 | Bold, italic, inline code | <kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>I</kbd> <kbd>E</kbd> |
+| Find in this document | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
+| Search every document | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> |
 | Export a PDF | <kbd>Ctrl</kbd>+<kbd>S</kbd> |
 
-Prefer clicking? The toolbar above the editor does all of the formatting.
+Prefer clicking? The toolbar above the editor does all of the formatting, and the
+palette is one button along the top right.
 
-## What Markdown you can write
+## What you can write
 
 *Italic*, **bold**, \`inline code\`, ~~strikethrough~~, ==highlight==, and
-[links](https://markbeam.vercel.app). Footnotes work as well.[^1]
+[links](https://markbeam.app). Footnotes work as well.[^1] Shortcodes like
+:tada: become emoji, and \`[TOC]\` — the list above — builds itself from your headings
+and links to them, in the preview, the PDF, the HTML and the Word export alike.
 
 - [x] Task lists
 - [ ] Ordered, bulleted and nested lists
 - Tables, quotes, and fenced code with syntax highlighting
 
+Definition lists, from Markdown Extra:
+
+Markdown
+: Plain text that reads fine as plain text.
+
+Markbeam
+: The thing rendering it half a second after you type it.
+
 > [!NOTE]
 > GitHub-style callouts — Note, Tip, Important, Warning and Caution.
 
-Wrap TeX in single dollar signs for inline maths, type \`:tada:\` for emoji, and open a
-\`mermaid\` fence for a diagram:
+For maths, wrap TeX in single dollar signs for an inline formula, or a pair of them on
+their own lines for a display block; KaTeX renders it. Open a \`mermaid\` fence for a
+diagram:
 
 \`\`\`mermaid
 graph LR
   A[Write] --> B{Markbeam}
   B --> C[Preview]
   B --> D[PDF]
+  B --> E[Slides]
 \`\`\`
 
-## What else is here
+Two parsers are available: GitHub-Flavored Markdown by default, and stricter CommonMark
+when you want it — *Switch to CommonMark* in the palette. **Typographic
+punctuation** — curly quotes, en dashes, ellipses — is off until you turn it on, because
+it rewrites what you typed.
 
-- **Images** — paste or drop one; it is resized and embedded, never uploaded
-- **Outline** — jump between headings of a long document
-- **Search** — <kbd>Ctrl</kbd>+<kbd>F</kbd> in this document,
-  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> across every document you have
-- **History** — earlier versions are saved as you pause; restore any of them
-- **Several documents** — kept side by side, from the menu beside the title
-- **Export** — PDF, HTML, Word, Markdown, or a link that carries the whole document in itself
-- **GitHub** — save this document to a repository, or open one from it
-- **Offline** — after the first visit it works with no connection, and installs as an app
-- **Themes** — light, dark, or whatever your system is set to
+## Editing, not just writing
+
+- **Format toolbar** — headings, lists, quotes, code, links and tables, above the editor
+- **Table editor** — put the cursor in a table, then *Table: add row*, *add column*,
+  *remove* either, or *change column alignment*. The source is rewritten aligned, and one
+  <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes the whole change
+- **Find and replace** — <kbd>Ctrl</kbd>+<kbd>F</kbd> and <kbd>Ctrl</kbd>+<kbd>H</kbd>
+- **Search every document** — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, with matches
+  in context
+- **Outline** — jump between the headings of a long document
+- **Sync scroll** — the two panes follow each other, either way; turn it off from the
+  status bar
+
+## Your documents
+
+- **Several at once** — the menu beside the title, and folders to group them
+- **History** — versions are snapshotted as you pause; restore any of them
+- **Trash** — a deleted document keeps its history and comes back for seven days, and the
+  toast that announces the deletion offers **Undo** on the spot
+- **Images** — paste or drop PNG, JPEG or WebP; each one is resized in your browser and
+  embedded in the Markdown, never uploaded. Documents are capped at 1 MiB so one
+  screenshot cannot evict your saved versions
+- **Open a file** — drop a \`.md\` file anywhere on the window, or pick one from the palette
+
+## Getting it out again
+
+- **PDF** — page breaks fall between blocks, so a heading, table row or diagram is never
+  sliced in half
+- **Print** — the document, not the app: no toolbar, no editor pane, light background
+  whatever theme you use
+- **Slides** — separate them with three dashes on their own line, then *Present slides…*
+  for a full-screen deck with arrow keys, or *Export slides as PDF…* for one landscape
+  page per slide
+- **HTML** — a standalone file with its styles inlined, or copied to the clipboard with
+  table borders intact so it survives a paste into an email
+- **Word** (\`.doc\`) **and Markdown** — the original source, unchanged
+- **Share link** — the whole document is compressed into the URL itself, so the link works
+  without anything being stored on a server
+- **Custom preview CSS** — your own stylesheet, scoped to the preview, applied to the HTML
+  and Word exports too. The PDF ignores it on purpose: that export rasterises the page, and
+  CSS its renderer cannot read produces a blank document rather than an error
+
+## Repositories, if you want them
+
+- **GitHub and GitLab** — save this document to a repository, or open one from it, with a
+  scoped token you supply. The token is kept only until the tab closes unless you ask
+  otherwise
+- **Gists** — publish to a secret or public Gist; the link lands on your clipboard
+- **Automatic sync** — off until you switch it on. Once on, it resends only a document you
+  have *already* saved to a repository, only after you change it, and only when you pause —
+  never a document you have not sent there yourself, and never on a blind timer
+- **Conflicts are never merged** — if the file moved in the repository since you last wrote
+  it, both versions are kept as separate documents and you choose. Nothing is overwritten
+
+## Everything else
+
+- **Themes** — light, dark, or whatever your system is set to, resolved before the page
+  paints so a reload never flashes the wrong one
+- **Offline** — after the first visit it works with no connection. *Install Markbeam* in the
+  palette gives it its own window, on a desktop or a phone home screen
+- **Nothing is uploaded** — no account, no tracking, no font CDN. Outbound requests are the
+  ones a repository you connected makes, plus anonymous page-speed timings that say nothing
+  about you or this document
 
 Everything above is in the command palette. Clear this text and start writing.
 

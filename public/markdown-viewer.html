@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Markdown Viewer — open and read .md files in your browser | Markbeam</title>
+    <meta name="description" content="Open a .md file and read it rendered, in your browser. No account, no upload: the file is parsed locally and never leaves the machine you opened it on.">
+    <meta name="color-scheme" content="dark light">
+
+    <!-- Absolute URLs, same host as index.html. See the comment block there before changing
+         the domain: this file is copied verbatim and cannot read a value from anywhere. -->
+    <link rel="canonical" href="https://markbeam.app/markdown-viewer">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Markdown Viewer — open and read .md files in your browser">
+    <meta property="og:description" content="Open a .md file and read it rendered, in your browser. Nothing is uploaded: the file is parsed locally.">
+    <meta property="og:url" content="https://markbeam.app/markdown-viewer">
+    <meta property="og:image" content="https://markbeam.app/og.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="stylesheet" href="/page.css">
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <nav><a href="/">← Open the editor</a></nav>
+      </header>
+
+      <main>
+        <h1>Markdown viewer: open a <code>.md</code> file and read it</h1>
+
+        <p class="lede">
+          A <code>.md</code> file is plain text with markup in it. A viewer turns that markup
+          into headings, tables, task lists and diagrams so you can read the document rather
+          than the syntax. Markbeam does that in the browser, without an account, and without
+          the file leaving your machine.
+        </p>
+
+        <h2>Opening a file</h2>
+        <ol class="steps">
+          <li><strong>Drag the file onto the window.</strong> Drop it anywhere on the page.</li>
+          <li>
+            Or press <code>Ctrl</code>+<code>K</code> and choose <em>Open a Markdown file…</em>,
+            which opens the ordinary file picker.
+          </li>
+          <li>
+            Or paste the text straight into the left pane. Anything you paste renders as you
+            paste it.
+          </li>
+        </ol>
+        <p>
+          The rendered document appears on the right. Press <code>Ctrl</code>+<code>3</code> for
+          reading view, which hides the editor and gives the rendered page the whole window —
+          the closest thing to a plain reader. <code>Ctrl</code>+<code>1</code> goes back to the
+          source, <code>Ctrl</code>+<code>2</code> to the split.
+        </p>
+
+        <h2>What it renders</h2>
+        <ul>
+          <li>GitHub-Flavored Markdown: tables, task lists, footnotes, strikethrough,
+            autolinks — with a stricter CommonMark mode if you want it.</li>
+          <li>Fenced code with syntax highlighting, and <code>```mermaid</code> fences as
+            <a href="/mermaid-diagrams">rendered diagrams</a>.</li>
+          <li>LaTeX maths through KaTeX, <code>&gt; [!NOTE]</code> callouts,
+            <code>==highlight==</code>, definition lists, and <code>[TOC]</code> for a contents
+            list built from the headings.</li>
+          <li>Images embedded in the file, including base64 data URLs.</li>
+        </ul>
+
+        <h2>Where the file goes: nowhere</h2>
+        <p>
+          Reading happens in the page. The file is parsed by JavaScript already running in your
+          browser, and the text is kept in that browser's local storage so it is still there
+          when you come back. There is no upload step and no server copy — you can confirm that
+          in the network panel, which stays silent while you open and read.
+        </p>
+        <p>
+          Two consequences worth knowing. Clearing site data for this domain deletes the
+          documents, because that storage <em>is</em> the storage. And a document is capped at
+          1&nbsp;MiB, which matters only if you paste large images into it.
+        </p>
+
+        <h2>Reading a long document</h2>
+        <ul>
+          <li><strong>Outline</strong> — <code>Ctrl</code>+<code>K</code> →
+            <em>Document outline</em> lists every heading and jumps to it.</li>
+          <li><strong>Find</strong> — <code>Ctrl</code>+<code>F</code> inside the document,
+            <code>Ctrl</code>+<code>Shift</code>+<code>F</code> across every document you have
+            open.</li>
+          <li><strong>Sync scroll</strong> — the two panes follow each other, so the source
+            stays beside whatever you are reading.</li>
+        </ul>
+
+        <h2>Taking it further</h2>
+        <p>
+          Once a document is open you can
+          <a href="/markdown-to-pdf">export it as a PDF</a>, present it as
+          <a href="/markdown-slides">slides</a>, copy it as HTML with its table styling intact,
+          or save it to a GitHub or GitLab repository you connect yourself. Everything is in the
+          command palette on <code>Ctrl</code>+<code>K</code>.
+        </p>
+
+        <a class="cta" href="/">Open a Markdown file →</a>
+      </main>
+
+      <footer>
+        <nav>
+          <a href="/">Markbeam</a>
+          <a href="/about">About</a>
+          <a href="/markdown-to-pdf">Markdown to PDF</a>
+          <a href="/mermaid-diagrams">Mermaid diagrams</a>
+          <a href="/markdown-slides">Slides</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

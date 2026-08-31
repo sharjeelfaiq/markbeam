@@ -37,6 +37,7 @@
   "dependencies": {
     "@fontsource/commit-mono": "^5.3.0",
     "@fontsource/newsreader": "^5.3.0",
+    "@vercel/speed-insights": "^2.0.0",
     "dompurify": "^3.4.0",
     "html2canvas-pro": "^2.4.0",
     "jspdf": "^4.2.1",

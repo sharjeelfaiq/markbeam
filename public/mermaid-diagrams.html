@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mermaid diagrams in Markdown — render as you type | Markbeam</title>
+    <meta name="description" content="Write a mermaid fence in Markdown and watch the flowchart render as you type, then export it to PDF, HTML or Word. Runs in the browser, with no account.">
+    <meta name="color-scheme" content="dark light">
+
+    <link rel="canonical" href="https://markbeam.app/mermaid-diagrams">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Mermaid diagrams in Markdown — render as you type">
+    <meta property="og:description" content="A mermaid fence becomes a diagram as you type it, and travels into the PDF, HTML and Word exports.">
+    <meta property="og:url" content="https://markbeam.app/mermaid-diagrams">
+    <meta property="og:image" content="https://markbeam.app/og.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="stylesheet" href="/page.css">
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <nav><a href="/">← Open the editor</a></nav>
+      </header>
+
+      <main>
+        <h1>Mermaid diagrams in Markdown, rendered as you type</h1>
+
+        <p class="lede">
+          Mermaid turns a few lines of text into a flowchart, a sequence diagram or a Gantt
+          chart. GitHub renders it in a repository; Markbeam renders it while you are still
+          writing it, and carries it into every export.
+        </p>
+
+        <h2>Writing one</h2>
+        <p>Open a fence with the language <code>mermaid</code>:</p>
+        <pre><code>```mermaid
+graph LR
+  A[Write] --&gt; B{Markbeam}
+  B --&gt; C[Preview]
+  B --&gt; D[PDF]
+```</code></pre>
+        <p>
+          The diagram appears in the right-hand pane. Flowcharts, sequence diagrams, class and
+          state diagrams, entity-relationship diagrams, Gantt charts and pie charts all work —
+          this is Mermaid itself, not a subset of it.
+        </p>
+
+        <h2>Why a half-typed diagram does not shout at you</h2>
+        <p>
+          Every keystroke in the middle of a diagram is, briefly, invalid syntax. Rendering on
+          each one would flash errors continuously, so rendering waits for a pause of about a
+          sixth of a second — long enough that typing is quiet, short enough that it feels
+          immediate. When the syntax really is wrong, the previous diagram stays on screen
+          rather than being replaced by an error box.
+        </p>
+
+        <h2>Diagrams in the exports</h2>
+        <ul>
+          <li><strong>PDF</strong> — diagrams are drawn as images first, so a wide one is not
+            clipped at the right edge, and the export forces light colours whatever theme you
+            are using. See <a href="/markdown-to-pdf">Markdown to PDF</a>.</li>
+          <li><strong>Print</strong> — <code>Ctrl</code>+<code>P</code> re-renders diagrams in
+            light colours before the print dialog opens, so they are legible on paper.</li>
+          <li><strong>HTML and Word</strong> — the rendered diagram travels with the document
+            rather than the fence text.</li>
+          <li><strong>Slides</strong> — a diagram on a slide is exported at slide size; see
+            <a href="/markdown-slides">presentation mode</a>.</li>
+        </ul>
+
+        <h2>Loaded only when you use one</h2>
+        <p>
+          Mermaid is a large library, so it is fetched the first time a document contains a
+          <code>mermaid</code> fence and not before. A document without diagrams never pays for
+          it — which is also why a first visit with no connection cannot render one: it has
+          nothing to render with until it has been downloaded once.
+        </p>
+        <p>
+          Everything else stays local. The diagram is drawn in your browser, and the document it
+          lives in is stored there too, exactly as described on <a href="/about">the about
+          page</a>. If you just want to read a file that already has diagrams in it, the
+          <a href="/markdown-viewer">viewer</a> is the shorter path.
+        </p>
+
+        <a class="cta" href="/">Draw a diagram →</a>
+      </main>
+
+      <footer>
+        <nav>
+          <a href="/">Markbeam</a>
+          <a href="/about">About</a>
+          <a href="/markdown-viewer">Markdown viewer</a>
+          <a href="/markdown-to-pdf">Markdown to PDF</a>
+          <a href="/markdown-slides">Slides</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

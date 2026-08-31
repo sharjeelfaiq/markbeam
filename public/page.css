@@ -1,0 +1,111 @@
+/*
+ * Styling for the static pages in `public/` — /about and the topic pages (T61).
+ *
+ * `public/` is copied verbatim by Vite and never passes through it, so these pages cannot
+ * import `src/styles/tokens.css`; the handful of colours below duplicate that ramp. That
+ * duplication is deliberate and documented in CLAUDE.md — the alternative was a
+ * `vite.config.js` with a second Rollup input, reversing the no-config decision.
+ *
+ * What changed with T61: there were five pages about to carry five copies of the same inline
+ * block. One stylesheet is still one duplication of the ramp, but in one place instead of
+ * five. **If a token changes in `src/styles/tokens.css`, change it here too.**
+ *
+ * The app itself does not use this file: every stylesheet it needs is imported by
+ * `src/main.js`, which is also why the shell has a `<noscript>` style block of its own.
+ */
+
+:root {
+  --bg: #ffffff;
+  --fg: #0d1219;
+  --muted: #47535f;
+  --accent: #0d9488;
+  --rule: #e4e8ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1015;
+    --fg: #e8edf5;
+    --muted: #a9b4c6;
+    --accent: #4de1d0;
+    --rule: #232833;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+
+.wrap { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+
+a { color: var(--accent); }
+
+header nav { margin-bottom: 2.5rem; font-size: 0.95rem; }
+
+h1 { font-size: clamp(1.6rem, 4vw, 2.25rem); line-height: 1.15; margin: 0 0 1rem; }
+h2 { font-size: 1.25rem; margin: 2.5rem 0 0.5rem; }
+h3 { font-size: 1.05rem; margin: 1.75rem 0 0.35rem; }
+
+.lede { font-size: 1.1rem; color: var(--muted); }
+
+ul, ol { padding-left: 1.25rem; }
+li { margin: 0.35rem 0; }
+
+/* Step lists on the topic pages: numbered, and readable as instructions rather than prose. */
+ol.steps { margin: 0.75rem 0; }
+ol.steps li { margin: 0.5rem 0; }
+
+code {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  background: var(--rule);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  background: var(--rule);
+}
+
+pre code { padding: 0; background: none; }
+
+blockquote {
+  margin: 1.25rem 0;
+  padding: 0.35rem 0 0.35rem 1rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.cta {
+  display: inline-block;
+  margin: 2rem 0 0;
+  padding: 0.7rem 1.2rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+footer nav a { margin-right: 0.75rem; }
+
+/* The preview image is decorative here; it must never widen the page on a phone. */
+img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 0.5rem; }

@@ -39,7 +39,8 @@ const KEYS = {
   trash: 'trash',
   customCss: 'custom_css',
   autoSync: 'auto_sync',
-  remoteBindings: 'remote_bindings'
+  remoteBindings: 'remote_bindings',
+  install: 'install'
 };
 
 let read = (key) => {
@@ -420,6 +421,21 @@ export const loadRemoteBindings = () => {
 };
 
 export const saveRemoteBindings = (map) => write(KEYS.remoteBindings, map || {});
+
+/*
+ * How the install offer has gone (T60): visits, refusals, when the last one was, and whether
+ * it was ever installed. One key rather than four, because the policy in `src/install.js`
+ * reads all of it together and writing it together keeps the two halves from disagreeing.
+ *
+ * Shape is normalised there rather than here — this returns whatever was stored, and an object
+ * or nothing at all is all the guarantee the caller needs.
+ */
+export const loadInstallState = () => {
+  const value = read(KEYS.install);
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+};
+
+export const saveInstallState = (state) => write(KEYS.install, state || {});
 
 export const loadCustomCss = () => {
   const value = read(KEYS.customCss);

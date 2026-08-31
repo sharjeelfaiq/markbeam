@@ -9,92 +9,63 @@
 
     <!-- Same base URL as the block in index.html. Changing domain means editing there and
          here, plus robots.txt and sitemap.xml. -->
-    <link rel="canonical" href="https://markbeam.vercel.app/about">
+    <link rel="canonical" href="https://markbeam.app/about">
     <meta property="og:type" content="website">
     <meta property="og:title" content="What Markbeam does — online Markdown editor with live preview">
     <meta property="og:description" content="Live Markdown preview, Mermaid diagrams, LaTeX math, and export to PDF, HTML and Word — all in the browser, with no account.">
-    <meta property="og:url" content="https://markbeam.vercel.app/about">
-    <meta property="og:image" content="https://markbeam.vercel.app/og.png">
+    <meta property="og:url" content="https://markbeam.app/about">
+    <meta property="og:image" content="https://markbeam.app/og.png">
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
 
-    <!--
-      This page lives in `public/`, which Vite copies verbatim without processing, so it
-      cannot import `src/styles/tokens.css` and the handful of colours below are a second
-      deliberate duplication of the token ramp — the first being `src/editor/themes.js`,
-      which duplicates it because Monaco takes concrete hex values.
+    <!-- Shared by every static page in `public/` (T61). These pages are copied verbatim by
+         Vite and cannot import `src/styles/tokens.css`, so that ramp is duplicated there —
+         once, rather than once per page. See CLAUDE.md. -->
+    <link rel="stylesheet" href="/page.css">
 
-      The trade was: duplicate six values, or add a `vite.config.js` with a second Rollup
-      input and reverse the documented decision that this project has no Vite config. Six
-      values won. If a token changes, change it here too. See CLAUDE.md.
-    -->
-    <style>
-      :root {
-        --bg: #ffffff;
-        --fg: #0d1219;
-        --muted: #47535f;
-        --accent: #0d9488;
-        --rule: #e4e8ee;
+    <!-- The questions below, marked up. Google requires the structured answer to match the
+         visible one, so if a Q&A changes on the page it changes here in the same edit. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Is Markbeam free?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, and there is nothing to sign up for."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work offline?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes, after the first visit. A service worker keeps what you have already loaded, so once the page has opened with a connection it will open again without one, with your documents intact, and it can be installed as an app. What it does not do is fetch things you have never used: syntax highlighting for a language you have not opened, or PDF export if you have never exported, each need one online run first."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use it on a phone?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Below roughly 900 pixels the two panes become tabs, so you switch between writing and reading rather than splitting a narrow screen."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is anything uploaded?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Documents and pasted images are held in your own browser's local storage. The only outbound requests are the ones a GitHub or GitLab repository you connect yourself makes, and those are manual unless you switch automatic sync on."
+            }
+          }
+        ]
       }
-
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0e1015;
-          --fg: #e8edf5;
-          --muted: #a9b4c6;
-          --accent: #4de1d0;
-          --rule: #232833;
-        }
-      }
-
-      * { box-sizing: border-box; }
-
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        line-height: 1.65;
-      }
-
-      .wrap { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
-
-      a { color: var(--accent); }
-
-      header nav { margin-bottom: 2.5rem; font-size: 0.95rem; }
-
-      h1 { font-size: clamp(1.6rem, 4vw, 2.25rem); line-height: 1.15; margin: 0 0 1rem; }
-      h2 { font-size: 1.25rem; margin: 2.5rem 0 0.5rem; }
-      h3 { font-size: 1.05rem; margin: 1.75rem 0 0.35rem; }
-
-      .lede { font-size: 1.1rem; color: var(--muted); }
-
-      ul { padding-left: 1.25rem; }
-      li { margin: 0.35rem 0; }
-
-      .cta {
-        display: inline-block;
-        margin: 2rem 0 0;
-        padding: 0.7rem 1.2rem;
-        border: 1px solid var(--accent);
-        border-radius: 0.5rem;
-        color: var(--accent);
-        text-decoration: none;
-        font-weight: 600;
-      }
-
-      footer {
-        margin-top: 3.5rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid var(--rule);
-        color: var(--muted);
-        font-size: 0.9rem;
-      }
-
-      /* The preview image is decorative here; it must never widen the page on a phone. */
-      img { max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 0.5rem; }
-    </style>
+    </script>
   </head>
 
   <body>
@@ -125,9 +96,21 @@
           <li><strong>GitHub-style callouts</strong> — Note, Tip, Important, Warning and
             Caution blockquotes.</li>
           <li><strong><code>==highlight==</code> and <code>:emoji:</code> shortcodes.</strong></li>
+          <li><strong>Definition lists</strong> — a term on one line, <code>: its
+            definition</code> on the next, from Markdown Extra.</li>
+          <li><strong><code>[TOC]</code></strong> — a contents list built from your headings,
+            with links that work in the preview, the PDF, the HTML file and the Word export.</li>
+          <li><strong>Typographic punctuation</strong> — curly quotes, en dashes and ellipses,
+            off until you switch it on, because it rewrites what you typed.</li>
           <li><strong>Local images</strong> — paste or drop PNG, JPEG and WebP files. Large
             images are resized in your browser and embedded directly in the Markdown; they
             are never uploaded.</li>
+          <li><strong>Table editing</strong> — with the cursor in a table, add or remove rows
+            and columns and cycle a column's alignment; the source is rewritten aligned, and a
+            cell containing a pipe stays escaped.</li>
+          <li><strong>Several documents</strong> — grouped into folders, searchable across all
+            of them at once, with an autosave history per document and a seven-day trash for
+            the ones you delete.</li>
         </ul>
 
         <h2>Getting the document out again</h2>
@@ -142,17 +125,46 @@
             source.</li>
           <li><strong>Shareable links</strong> — the document is compressed into the URL
             fragment, so it never touches a server.</li>
-          <li><strong>GitHub</strong> — save the open document to a repository you name, or
-            open one from it. Both are manual, and nothing happens until you connect.</li>
+          <li><strong>Slides</strong> — three dashes on their own line separate them. Present
+            full-screen with the arrow keys, or export the deck as a PDF with one landscape
+            page per slide.</li>
+          <li><strong>Custom preview CSS</strong> — your own stylesheet, scoped to the preview
+            and carried into the HTML and Word exports. The PDF ignores it deliberately: that
+            export rasterises the page, and CSS its renderer cannot read would produce a blank
+            document rather than an error.</li>
+          <li><strong>GitHub and GitLab</strong> — save the open document to a repository you
+            name, or open one from it, with a scoped token you supply. You can also publish to
+            a secret or public <strong>Gist</strong>. Saving and opening are manual; automatic
+            sync exists and is off until you switch it on, as described below.</li>
         </ul>
+
+        <h2>Reading a Markdown file</h2>
+        <p>
+          Markbeam is a viewer as well as an editor: drop a <code>.md</code> file anywhere on
+          the window — or pick one from the command palette — and it renders immediately, with
+          no upload step. <code>Ctrl</code>+<code>3</code> hides the editor and gives the
+          rendered document the whole window, which is the closest thing here to a plain reader.
+        </p>
+        <p>
+          There are longer walkthroughs of the four things people most often arrive wanting:
+          <a href="/markdown-viewer">opening and reading a <code>.md</code> file</a>,
+          <a href="/markdown-to-pdf">exporting Markdown to PDF</a>,
+          <a href="/mermaid-diagrams">Mermaid diagrams</a>, and
+          <a href="/markdown-slides">presenting a document as slides</a>.
+        </p>
 
         <h2>Your documents stay yours</h2>
         <p>
           Everything is held in your browser's local storage. There is no account, no
-          analytics tag, no third-party font CDN and no server that sees what you write.
+          third-party font CDN and no server that sees what you write. There is no analytics
+          tag either — nothing counts your visits, identifies you, or sets a cookie. The one
+          measurement Markbeam does take is page speed: how quickly the editor became usable,
+          reported without anything about you or your document, from this domain rather than a
+          third party.
           Pasted and dropped images are processed and stored there too. Several documents can
-          be kept side by side, and autosave history keeps earlier versions so an accidental
-          deletion is recoverable.
+          be kept side by side, autosave history keeps earlier versions of each one, and a
+          deleted document goes to a trash that holds it — with its history — for seven days,
+          so an accidental deletion is recoverable rather than final.
         </p>
         <p>
           <strong>The one exception is a repository you connect yourself.</strong> Saving and
@@ -182,13 +194,25 @@
         <p>
           Yes, after the first visit. A service worker keeps what you have already loaded, so
           once the page has opened once with a connection it will open again without one, with
-          your documents intact — and it can be installed as an app.
+          your documents intact — and it can be installed as an app, in its own window. Markbeam
+          offers that once you have actually used it rather than on arrival, takes “not now” for
+          an answer, and the offer is always in the command palette if you change your mind.
         </p>
         <p>
           What it does not do is fetch things you have never used. Syntax highlighting for a
           language you have not opened before, or PDF export if you have never exported, both
           need one online run first. That is a property of caching on use rather than
           downloading several megabytes on the off chance.
+        </p>
+
+        <h3>Do you track me?</h3>
+        <p>
+          No. There is no analytics tag, no cookie, no visitor identifier and no record of what
+          you write — the documents never leave your browser to begin with. Markbeam does
+          collect anonymous <em>speed</em> measurements: how long the page took to become
+          usable, and how much it shifted while loading. Those are timings, not visits, they
+          carry nothing that identifies you, and they are sent to this domain rather than to
+          anyone else. Watch the network panel if you would rather check than take our word.
         </p>
 
         <h3>Can I use it on a phone?</h3>
@@ -201,10 +225,13 @@
       </main>
 
       <footer>
-        <p>
-          <a href="/">Markbeam</a> ·
-          <a href="https://github.com/sharjeelfaiq/markbeam">GitHub</a>
-        </p>
+        <nav>
+          <a href="/">Markbeam</a>
+          <a href="/markdown-viewer">Markdown viewer</a>
+          <a href="/markdown-to-pdf">Markdown to PDF</a>
+          <a href="/mermaid-diagrams">Mermaid diagrams</a>
+          <a href="/markdown-slides">Slides</a>
+        </nav>
       </footer>
     </div>
   </body>

@@ -75,3 +75,7 @@ dist/
 .vercel
 
 .vercel
+
+# Agent skill packs installed into the working tree by tooling, not part of the site
+.agents/
+skills-lock.json

@@ -53,6 +53,8 @@ import {
   saveTypography,
   loadAutoSync,
   saveAutoSync,
+  loadInstallState,
+  saveInstallState,
   loadRemoteBindings,
   saveRemoteBindings,
   loadCustomCss,
@@ -76,6 +78,15 @@ import { initSearch, open as openSearchSheet } from './ui/search.js';
 import { rememberDeleted, restoreDeleted } from './trash.js';
 import { initStyle, open as openStyleSheet } from './ui/style.js';
 import { initPresent, open as openPresent } from './ui/present.js';
+import { createInstallPrompt, ENGAGED_MS } from './install.js';
+import {
+  hide as hideInstall,
+  initInstall,
+  isIosSafari,
+  isStandalone,
+  openHelp as openInstallHelp,
+  show as showInstall
+} from './ui/install.js';
 import { scopeCustomCss } from './customCss.js';
 import { createAutoSync } from './autoSync.js';
 import {
@@ -122,6 +133,29 @@ import { toast, toastError } from './ui/toasts.js';
 const CONFIRM_RESET = 'Replace the current document with the Markbeam welcome text?';
 const CONFIRM_CLEAR = 'Clear the document? This cannot be undone.';
 const PULSE_MS = 460;
+
+/*
+ * The browser's install prompt, caught at module scope (T60).
+ *
+ * `beforeinstallprompt` fires as soon as the manifest and the service worker satisfy the
+ * browser's criteria, which can be *before* `load` — and `init()` runs on `load`. A listener
+ * added in there would miss it on exactly the visits where everything is already cached, which
+ * is the same trap the service-worker registration at the bottom of this file documents from
+ * the other side.
+ *
+ * `preventDefault()` suppresses whatever the browser would have shown on its own, so the offer
+ * appears when `src/install.js` says it is warranted rather than on arrival. The event is kept
+ * because it is the only handle on the real prompt: it can be fired once, and only from a user
+ * gesture.
+ */
+let deferredInstall = null;
+let onInstallAvailable = () => {};
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstall = event;
+  onInstallAvailable();
+});
 
 const init = () => {
   // Must run before anything reads storage: recovers content saved by older builds
@@ -242,10 +276,25 @@ const init = () => {
 
   let persistDocuments = () => saveDocIndex(documents);
 
-  editor.onDidChangeModelContent(() => {
+  editor.onDidChangeModelContent((event) => {
     const value = editor.getValue();
     convert(value);
     ensureMath(value);
+
+    /*
+     * Engagement for the install offer.
+     *
+     * **`isFlush` is the whole check.** Monaco sets it when the model was replaced wholesale by
+     * `setValue()`, which is how a document is opened, restored, reset or adopted from a share
+     * link — and the change event that arrives then carries the entire text. Counting that as
+     * typing made the offer appear the instant anybody arrived, welcome document and all, which
+     * is precisely the on-arrival prompt this feature exists not to be. Counting the changed
+     * characters rather than the document length is not enough on its own; measured.
+     */
+    if (!event?.isFlush) {
+      installPrompt.noteEdit((event?.changes || []).reduce((n, c) => n + (c.text || '').length, 0));
+      offerInstall();
+    }
 
     if (activeDocId) {
       saveDoc(activeDocId, value);
@@ -1526,6 +1575,103 @@ const init = () => {
   };
 
   /*
+   * The install offer (T60).
+   *
+   * `src/install.js` owns *when*; this owns *what happens*. The offer is only ever raised
+   * through `offerInstall()`, so every path — typing, the timer, a returning visit — goes
+   * through the same one-per-session guard.
+   */
+  const installPrompt = createInstallPrompt({
+    loadState: loadInstallState,
+    saveState: saveInstallState,
+    isStandalone
+  });
+
+  let offerInstall = () => {
+    // iOS can be offered instructions; everywhere else needs the browser's own prompt first.
+    if (!deferredInstall && !isIosSafari()) {
+      return;
+    }
+    if (!installPrompt.shouldOffer()) {
+      return;
+    }
+    if (showInstall()) {
+      installPrompt.recordOffered();
+    }
+  };
+
+  /*
+   * The prompt can only be fired from a user gesture and only once, so this runs straight off
+   * the click and drops the stale event afterwards however it went. A declined prompt is not
+   * recorded as a dismissal: the browser already asked, and counting it twice would burn two
+   * of the three refusals the backoff allows.
+   */
+  let acceptInstall = async () => {
+    hideInstall();
+
+    if (isIosSafari() && !deferredInstall) {
+      openInstallHelp();
+      return;
+    }
+
+    if (!deferredInstall) {
+      toast('Use your browser menu — look for Install or Add to Home screen');
+      return;
+    }
+
+    const event = deferredInstall;
+    deferredInstall = null;
+
+    try {
+      await event.prompt();
+      const choice = await event.userChoice;
+      if (choice?.outcome === 'accepted') {
+        installPrompt.recordInstalled();
+      }
+    } catch (error) {
+      // A prompt the browser refuses to show is not worth interrupting anyone over.
+      // eslint-disable-next-line no-console
+      console.warn('Install prompt unavailable', error);
+    }
+  };
+
+  initInstall({
+    onAccept: acceptInstall,
+    onDismiss: () => installPrompt.recordDismissed()
+  });
+
+  // The offer becomes possible the moment the browser hands over an event, which may be after
+  // the visitor has already earned it — so re-check rather than waiting for the next keystroke.
+  onInstallAvailable = () => offerInstall();
+
+  window.addEventListener('appinstalled', () => {
+    installPrompt.recordInstalled();
+    deferredInstall = null;
+    hideInstall();
+    toast('Markbeam installed');
+  });
+
+  /*
+   * Reachable whatever the policy has decided, because somebody who dismissed it three months
+   * ago and now wants it should not have to clear storage to get it back.
+   */
+  let installFromPalette = () => {
+    if (installPrompt.isInstalled()) {
+      toast('Markbeam is already installed');
+      return;
+    }
+    if (isIosSafari() && !deferredInstall) {
+      openInstallHelp();
+      return;
+    }
+    if (deferredInstall) {
+      acceptInstall();
+      return;
+    }
+    showInstall();
+  };
+
+  /*
    * Presentation mode (T51).
    *
    * The deck is built from `#output` as it stands, so whatever the preview shows — rendered
@@ -1785,6 +1931,7 @@ const init = () => {
     { title: 'Document outline', run: openOutline },
     { title: 'Present slides…', run: presentSlides },
     { title: 'Export slides as PDF…', run: exportSlides },
+    { title: 'Install Markbeam', run: installFromPalette },
     { title: 'Save to a repository…', run: saveToGithub },
     { title: 'Open from a repository…', run: openFromGithub },
     { title: 'Publish as Gist…', run: publishGist },
@@ -1969,6 +2116,47 @@ const init = () => {
       convert(value);
     }
   });
+
+  /*
+   * The install signals that are not keystrokes: this visit is now counted, and sitting with
+   * the editor open for ENGAGED_MS counts as using it — somebody reading a long shared
+   * document has engaged just as much as somebody typing into an empty one.
+   *
+   * Counted last, so a load that threw earlier does not spend a visit.
+   */
+  installPrompt.noteVisit();
+  offerInstall();
+  setTimeout(() => {
+    installPrompt.tick();
+    offerInstall();
+  }, ENGAGED_MS);
 };
+
+/*
+ * Speed Insights (T62) — Web Vitals from real visits, and nothing else.
+ *
+ * Three things bound it, because this is the first telemetry the app has ever carried and the
+ * privacy claim on `/about` is a promise rather than a slogan:
+ *
+ * - **Production only.** `import.meta.env.PROD` keeps it out of `npm run dev` entirely, so the
+ *   suites never see it. That is not only tidiness: the script lives at
+ *   `/_vercel/speed-insights/script.js`, which the Vite dev server answers with `index.html`,
+ *   and a dozen suites fail on the console error that produces.
+ * - **Same origin.** The script and its beacon are served by Vercel from this domain, so the
+ *   claim that nothing is sent to a third party still holds — check the network panel.
+ * - **Timings, not visits.** It reports LCP, CLS and the rest. It does not identify a visitor,
+ *   set a cookie, or record what you typed — which is why `/about` can still say there is no
+ *   analytics tag while saying this exists.
+ *
+ * Vercel Web Analytics was considered at the same time and deliberately left out: page-view
+ * counting per visitor is the thing the "no analytics" promise is actually about.
+ */
+if (import.meta.env.PROD) {
+  import('@vercel/speed-insights')
+    .then(({ injectSpeedInsights }) => injectSpeedInsights())
+    .catch(() => {
+      // Measuring how fast the app is must never be able to stop it loading.
+    });
+}
 
 window.addEventListener('load', init);

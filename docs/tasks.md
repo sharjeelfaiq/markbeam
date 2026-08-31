@@ -36,6 +36,30 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P3 — Housekeeping
 
+### [ ] T59 · No Content-Security-Policy
+
+**Why:** `readSharedPayload()` renders **attacker-controlled Markdown** in this origin — a
+share link is a document someone else wrote — and DOMPurify is currently the only thing
+between that and script execution. A CSP is the second layer, and the app now has its own
+domain to set headers on (T58 added the rest).
+
+**Measure before writing the policy.** Every one of these is a way a naive policy breaks the
+app while the suite still passes:
+
+- Monaco is loaded from `cdn.jsdelivr.net`, so `script-src` must name it.
+- The pre-paint theme script is **inline** and must stay inline, so it needs a hash or
+  `'unsafe-inline'` — and a hash means the policy has to change whenever that script does.
+- Monaco injects its stylesheet as a `<style>` tag, and `src/customCss.js` injects the user's;
+  both need `style-src 'unsafe-inline'` unless nonced.
+- `img-src` must allow `data:` — images live inside the document as base64 WebP.
+- mermaid, jspdf and html2canvas-pro may use `eval`/`new Function`; that has to be checked
+  rather than assumed, because the failure is a blank export, not an error.
+
+**Done when:** a policy is served from `vercel.json`, every lazy path is exercised against it
+(mermaid render, KaTeX, PDF export, slide export, image paste, custom CSS, a share link), and
+the report records what had to be allowed and why — a CSP with `'unsafe-inline'` in
+`script-src` is worth having only if that is stated plainly rather than glossed.
+
 ### [ ] T52 · GitHub sync has never met the real API
 
 **Why:** carried forward from T37, which shipped with this stated rather than glossed. Every
@@ -112,6 +136,286 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T62 · Speed Insights, and the promise it had to be squared with — 2026-08-31
+
+**Why:** no measurement of how fast the app actually is for real visitors — only local numbers
+on a developer machine, which is the one machine that never has a slow connection.
+
+**The decision was which half to take.** Vercel offers Web Analytics (page views, referrers,
+per-visitor counting) and Speed Insights (Web Vitals). Only the second shipped. The claim on
+`/about` is that nothing counts your visits or identifies you, and page-view analytics is
+exactly the thing that claim is about; timings are not. Taking both would have meant retracting
+the promise rather than qualifying it.
+
+**Three bounds, each one a real failure avoided:**
+
+- **Production only** (`import.meta.env.PROD`, dynamic import). The script lives at
+  `/_vercel/speed-insights/script.js`, and the Vite dev server answers unknown paths with
+  `index.html` — so a dev-time injection puts a console error into every suite that treats
+  console errors as failures, which is most of them.
+- **Same origin.** Script and beacon are served by Vercel from `markbeam.app`, so "no
+  third-party requests" survives intact and stays checkable in the network panel.
+- **`public/sw.js` skips `/_vercel/`.** Caching the script would serve a stale one, and
+  replaying a beacon from cache would report a visit that is not happening.
+
+**The wording moved with the code**, as T37 and T49 did before it: `/about` now says there is
+no analytics tag, no cookie and no visitor identifier, *and* that page-speed timings are
+collected — with a new FAQ answer, "Do you track me?", that says so plainly. `README.md` and the
+welcome document match.
+
+**Measured:** the pasted setup snippets were the Next.js/React ones; this app has no framework,
+so the integration is `injectSpeedInsights()` from a dynamic import in `src/main.js`. Build
+clean, full suite green, and no telemetry request is made in development — which is why the
+suites are unaffected either way.
+
+### Verify vs reference — T62
+
+Not a user-facing feature; the honest check is that it is invisible where it should be and
+present where it should be.
+
+- Locally (`npm run dev`): the network panel shows **no** `/_vercel/` request at all.
+- In production, after deploy: `/_vercel/speed-insights/script.js` loads from `markbeam.app`
+  and nothing else appears — no cookie is set, and no request carries document text. Data lands
+  in the Speed Insights tab of the Vercel dashboard within a few real visits.
+
+### [x] T61 · Nothing to rank: the site had two pages and pointed at the old host — 2026-08-31
+
+**Why:** searching *markdown viewer* did not find markbeam.app. Four separate causes, measured
+on 2026-08-31, only the last about competition:
+
+1. **Not indexed at all.** `site:markbeam.app` returned nothing — a days-old domain with no
+   Search Console property, no submitted sitemap and no inbound links.
+2. **The live pages named the old host.** Served canonical and `og:url` said
+   `markbeam.vercel.app`, and so did the live `robots.txt` and `sitemap.xml`. A canonical
+   pointing elsewhere is a page asking not to be indexed — T58 fixes it and was unpushed.
+3. **The word nobody typed.** Title and description said *Editor with Live Preview*; "viewer"
+   appeared nowhere on the site, despite the app being one.
+4. **Two indexable pages**, neither aimed at any particular intent.
+
+**What shipped.** The title becomes *Markbeam — Online Markdown Editor & Viewer with Live
+Preview* (60 chars, inside the 65 the suite caps), descriptions name viewing, slides and PDF,
+the JSON-LD gains `alternateName: "Markdown Viewer"` and an open-and-read feature entry, and
+`/about` gains a *Reading a Markdown file* section plus `FAQPage` structured data over the Q&A
+already on it. Four topic pages answer specific intents: `/markdown-viewer`,
+`/markdown-to-pdf`, `/mermaid-diagrams`, `/markdown-slides`.
+
+**They are pages, not keywords with a heading.** Each carries ~2,000 characters of real
+explanation including what the thing *cannot* do — the PDF excludes custom CSS, Mermaid needs
+one online run before it works offline, three dashes are not always a slide break. The suite
+enforces that shape: ≥900 characters of prose, ≥3 sections, a description in the 50–160 window,
+its own absolute canonical, and a link back to the app. A doorway page fails those checks,
+which is the point of writing them that way.
+
+**The check that would otherwise have lied.** The dev server answers an unknown path with
+`index.html`, so a page that was never created returns 200 and looks fine. Every page assertion
+first checks the response is *not* the app shell (`#editor` absent) — the same guard the
+`/about` check has carried since T28, and the reason the fail-first run reported "served the
+app shell — the page does not exist" rather than a green tick.
+
+**Five inline copies of the colour ramp avoided.** `about.html` carried its own `<style>`; four
+more pages would have meant five copies of the same six token values. They now share
+`public/page.css` — still one duplication of `tokens.css`, because `public/` never passes
+through Vite, but one instead of five.
+
+**Measured:** fail-first — sitemap listing 2 URLs where 6 were required, and all four pages
+reported as the app shell. Green after: sitemap lists 6, and the pages measure 2422 / 2377 /
+2179 / 2021 characters across 5 / 4 / 4 / 4 sections, with descriptions of 151 / 155 / 152 /
+149 characters. CI now smoke-tests all four clean URLs and `page.css` on the live host.
+
+**Not claimed:** any ranking change. Rankings are not observable from this repo, "markdown
+viewer" is held by exact-match domains and sites with a decade of links, and a fresh domain
+starts with no history. What is measurable is the served markup and, once Search Console is
+verified, indexation. `docs/seo-brief.md` records the rest as off-site work.
+
+### Verify vs reference — T61
+
+*On the reference* — https://markdownlivepreview.com is a single page. There are no topic
+pages, no `/about`, and no structured data beyond the basics, so this is a comparison of one
+page against six.
+
+*On ours*, after deploy:
+
+```
+curl -sI https://markbeam.app/markdown-viewer | head -1     # 200, and the same for the other three
+curl -s  https://markbeam.app/markdown-to-pdf | grep -o 'rel="canonical"[^>]*'
+curl -s  https://markbeam.app/sitemap.xml | grep -c "<loc>"  # 6
+```
+
+Locally the `.html` spellings are what work — `cleanUrls` is a Vercel behaviour and the dev
+server knows nothing about it, which is why the suite asks for `markdown-viewer.html` and CI
+asks for `/markdown-viewer`.
+
+### [x] T60 · Installable since T33, and never once mentioned — 2026-08-31
+
+**Why:** the manifest, the icons and the service worker have been there since T33, so the app
+could always be installed — and nothing ever said so. Chrome removed its own mini-infobar years
+ago, leaving an address-bar icon nobody looks at; on iOS there is no signal at all, and no
+programmatic install either.
+
+**The offer is earned, not automatic.** `src/install.js` holds the whole policy and imports
+nothing, so "when do we interrupt someone?" is one short file: never in standalone or after
+`appinstalled`, never inside the backoff, and otherwise only once one of three signals says the
+visitor is actually writing — 40 characters typed, 45 seconds with the tab in front of them, or
+a second visit. One offer per session, or every later keystroke re-opens a banner already seen.
+
+**"Not now" is an answer, and is treated as one:** 14 days, then 90, then never again. A
+declined *browser* prompt is deliberately not counted as a dismissal — the browser already
+asked, and counting it twice would burn two of the three refusals.
+
+**The bug the suite caught, which is the interesting part.** Engagement was first counted from
+the change event's text, on the reasoning that document length would wrongly count an opened
+document as typing. Not enough: `setValue()` — which is how a document is opened, restored,
+reset, or adopted from a share link — emits a change event carrying the *entire* text, so the
+welcome document itself registered as 5,700 characters and the banner appeared the instant
+anybody arrived. That is precisely the on-arrival prompt this task exists not to be. Monaco
+flags those events with **`isFlush`**, and that flag is now the guard.
+
+**iOS gets instructions rather than nothing**, since Share → Add to Home Screen is the only
+route there; iPadOS reports itself as a Mac, so the touch-point count is what distinguishes it
+from a desktop Safari. The banner is **not** a `<dialog>`: it never blocks the editor, and the
+palette command *Install Markbeam* stays available whatever the policy has decided, so three
+refusals are never a lock-out.
+
+**Measured:** the suite was red first on five checks — no banner after real typing, no
+`prompt()` call, nothing for a returning visitor, no dismissal recorded, no palette command.
+Green after, including `prompt() called 1 time(s)`, `dismissals: 1` with a timestamp, silence
+inside the backoff window, silence with `installedAt` set, and `0px` horizontal overflow at
+375px with the banner up.
+
+### Verify vs reference — T60
+
+*On the reference* — https://markdownlivepreview.com ships no manifest and no service worker,
+so there is nothing to install: the browser offers no install affordance at all, and closing
+the tab is the end of it.
+
+*On ours* — http://localhost:5173, in Chrome:
+
+- Type about fifty characters. The banner appears **above the status bar**, does not block the
+  editor, and offers *Install* and *Not now*.
+- Reload without typing and it stays away: arrival alone earns nothing.
+  ```js
+  JSON.parse(localStorage.getItem('markbeam:install')).v   // { visits, dismissals, lastDismissedAt, installedAt }
+  ```
+- Click *Not now*, then reload and type again — silent, because `dismissals` is 1 and the
+  first backoff is 14 days. `Ctrl+K` → *Install Markbeam* still works, which is the difference
+  between a backoff and a lock-out.
+- Install for real: the app opens in its own window, and inside it the banner never appears —
+  `display-mode: standalone` and the stored `installedAt` both say so.
+
+### [x] T58 · The site moved to markbeam.app — 2026-08-31
+
+**Why:** every absolute URL in the repo named `markbeam.vercel.app` — canonical, OG, Twitter,
+JSON-LD, `robots.txt`, `sitemap.xml`, the README, the welcome document and the CI smoke
+target — so a crawler was still being told the platform subdomain was the real address, and
+both hosts served the same content.
+
+**The discovery that made this two jobs, not one.** `https://markbeam.app` **308ed to
+`https://www.markbeam.app`**: Vercel had www as the primary domain, so the apex was the
+redirect and www was the site. Writing the canonical as the apex before flipping that would
+have produced a canonical pointing at a redirect — worse than the stale host it replaced,
+because it looks correct. The dashboard flip is the fix for www, and there must **never** be a
+`www → apex` rule in `vercel.json` while the dashboard says the opposite: that pair is a
+redirect loop.
+
+**The old alias 308s rather than dying.** The rule lives in `vercel.json`, keyed on
+`has: host`, not in a dashboard nobody diffs. Every link posted before the move keeps working,
+and the duplicate stops competing for the same content. CI checks the redirect *separately*
+from checking the site is up, because a redirect that silently stops working is invisible for
+months.
+
+**What the owned domain bought, beyond the name.** The `vercel.app` alias inherited Vercel's
+HSTS; our host inherits nothing, so `vercel.json` now sets HSTS, `nosniff`,
+`strict-origin-when-cross-origin`, `X-Frame-Options: DENY` and a `Permissions-Policy`. Worth
+recording so nobody over-claims it: **`.app` is on the HSTS preload list as an entire TLD**, so
+browsers already refuse plain HTTP to any `.app` host — the header covers subdomains and the
+preload requirements, and is not what makes this site HTTPS-only. A CSP was deliberately *not*
+bundled in: it needs measuring against the Monaco CDN, the inline pre-paint script and the
+rasterisers' eval use, and that is **T59**.
+
+**The guard, because a host swap is exactly the kind of change that half-lands.**
+`tests/tooling.test.mjs` fails if any served file still names the old host, if `vercel.json`
+loses the redirect, or if CI stops pointing at the canonical host. Asserted against the parsed
+config rather than a grep: a redirect with the right strings in the wrong keys reads fine and
+does nothing. `vercel.json`, `ci.yml`, `CLAUDE.md` and `docs/seo-brief.md` are excluded from
+the string check on purpose — each *must* name the old host, to redirect it, to assert the
+redirect, or to explain it.
+
+**Measured:** guard red first, naming all nine files that still carried the old host; green
+after. `docs/tasks.md` keeps its old-host occurrences — they record checks run against the site
+as it was, and editing history to say something that was not true then is worse than a stale
+string.
+
+### Verify vs reference — T58
+
+Not a product difference; the reference site has its own domain and always did. What is
+checkable is the move itself:
+
+```
+curl -sI https://markbeam.app/            # 200, and the five security headers
+curl -sI https://www.markbeam.app/        # 308 -> https://markbeam.app/
+curl -sI https://markbeam.vercel.app/     # 308 -> https://markbeam.app/
+curl -s  https://markbeam.app/ | grep -o 'rel="canonical"[^>]*'   # names the apex
+```
+
+The one that needs saying out loud: the first two lines only read that way **after** the Vercel
+primary-domain flip. Before it, apex and www are the other way round, and the canonical this
+commit ships points at a redirect.
+
+### [x] T57 · The product moved and the words describing it did not — 2026-08-31
+
+**Root cause:** three waves of features shipped (T45–T51) and the user-facing text stayed
+where it was. The welcome document — the only thing a first-time visitor reads, and the only
+place in the app that lists what the app *can do*, since the palette shows commands one search
+at a time — named about twenty features and was missing thirteen: GitLab, Gists, automatic
+sync, conflict handling, table editing, presentation mode, slide export, trash, custom preview
+CSS, `[TOC]`, definition lists, typographic punctuation and folders. `public/about.html` still
+described sync as GitHub-only. `README.md` carried a module tree missing eight files and a
+suite list naming seven of thirty-seven. A feature nobody is told about may as well not have
+shipped, which is the real cost, and it is invisible to every suite.
+
+**`docs/seo-brief.md` was worse than stale — it was wrong.** It described a "verified starting
+state" with no robots.txt, no sitemap, no canonical, no OG tags, no JSON-LD and no `<head>`
+assertions, all of which T27–T29 had made false. A brief handed to an agent as fact is a brief
+that produces work against a site that no longer exists; it is rewritten to what is served
+today, with the custom domain named as the one genuinely open item.
+
+**The repository link is gone from both footers** — the status bar and `/about`. The
+`tests/ui.test.mjs` check that asserted it is **replaced rather than deleted**: it now asserts
+the status bar contains no `#source-link`, no off-origin anchor and no `<img>` at all. The
+property that check was defending — the shell makes no third-party request and offers no
+off-origin destination — outlived the link it was written for, and a deleted check defends
+nothing.
+
+**The constraint that shaped the welcome document.** It cannot contain a `$…$` pair, even
+inside backticks: `hasMath()` in `src/markdown/math.js` scans raw source and knows nothing
+about code spans, so a dollar-delimited example makes *every* first visit fetch KaTeX and
+breaks the promise on `/about` that Markbeam does not fetch things you have never used. The
+maths line describes the syntax in prose for that reason. It also carries no `---`: that would
+render as a rule and cut the tour into slides in presentation mode.
+
+**Measured:** the document went from 77 to ~150 lines, still exactly one Mermaid fence
+(`tests/mermaid.test.mjs` counts one svg), still containing "Welcome to Markbeam"
+(`tests/editor.test.mjs`), and `hasMath()` false against it, so the KaTeX chunk stays unfetched
+on a first visit. Full suite green.
+
+### Verify vs reference — T57
+
+*On the reference* — https://markdownlivepreview.com opens with a sample document that
+demonstrates Markdown syntax. It is a syntax sample, not a tour of the tool: there is nothing
+else to tour.
+
+*On ours* — http://localhost:5173 opens on a document that names every capability and
+demonstrates the syntax while doing it, with a `[TOC]` built from its own headings. Check the
+two things that are easy to get wrong:
+
+- Hard-reload with the network panel open. **No KaTeX chunk is fetched** — the welcome text
+  mentions maths without containing a dollar pair. Type `$x^2$` and watch it load on demand;
+  that is the contrast worth seeing.
+- The status bar has one link, *About*, and it stays on this origin:
+  ```js
+  [...document.querySelectorAll('.statusbar a')].map((a) => a.href)  // one, same-origin
+  ```
 
 ### [x] T49 · Automatic sync, and what happens on a conflict — 2026-08-31
 

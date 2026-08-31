@@ -330,12 +330,12 @@ export const suite = {
       }, sitemap.body);
 
       checks.push({
-        name: 'sitemap.xml parses as a urlset and lists both real pages',
+        name: 'sitemap.xml parses as a urlset and lists every real page',
         pass:
           sitemap.status === 200 &&
           !/<html/i.test(sitemap.body) &&
           parsedOk &&
-          sitemapUrls.length === 2 &&
+          sitemapUrls.length >= 6 &&
           sitemapUrls.some((u) => /\/$/.test(u)) &&
           // `/about`, not `/about.html`: cleanUrls redirects the .html form, and listing a
           // redirect source sends crawlers through a needless hop.
@@ -435,6 +435,70 @@ export const suite = {
             ? 'no offline FAQ answer found'
             : `worksOffline=${reallyWorksOffline}, ${JSON.stringify(offlineAnswer.slice(0, 90))}`
       });
+
+      /*
+       * The topic pages (T61).
+       *
+       * Each one exists to answer a specific search intent, and the risk with pages written
+       * for that reason is that they become doorway pages — a keyword, a heading and nothing
+       * worth reading. So the assertion is about *substance*: real prose, real subheadings, a
+       * canonical of its own, and a link back into the app.
+       *
+       * `.html` spellings, because `cleanUrls` is a Vercel behaviour and the dev server this
+       * suite runs against knows nothing about it — the same reason the about check above uses
+       * `about.html`. The clean URLs are covered by the CI smoke test instead.
+       *
+       * `isApp` matters more here than anywhere: the dev server answers an unknown path with
+       * `index.html`, so a page that was never created would otherwise "pass" while the suite
+       * measured the editor.
+       */
+      const TOPIC_PAGES = [
+        'markdown-viewer.html',
+        'markdown-to-pdf.html',
+        'mermaid-diagrams.html',
+        'markdown-slides.html'
+      ];
+
+      for (const path of TOPIC_PAGES) {
+        const response = await page.goto(new URL(path, page.url()).href, {
+          waitUntil: 'domcontentloaded'
+        });
+
+        const info = await page.evaluate(() => {
+          const h1 = document.querySelector('h1');
+          const canonical = document.querySelector('link[rel="canonical"]');
+          return {
+            isApp: !!document.querySelector('#editor'),
+            title: document.title,
+            h1: h1 ? h1.textContent.trim() : null,
+            canonical: canonical ? canonical.getAttribute('href') : null,
+            description: document.querySelector('meta[name="description"]')?.content || '',
+            bodyChars: document.body.innerText.replace(/\s+/g, ' ').trim().length,
+            headings: document.querySelectorAll('h2').length,
+            linksHome: [...document.querySelectorAll('a')].some(
+              (a) => (a.getAttribute('href') || '') === '/'
+            )
+          };
+        });
+
+        checks.push({
+          name: `/${path.replace('.html', '')} is a real page, not a keyword with a heading`,
+          pass:
+            response.status() === 200 &&
+            !info.isApp &&
+            KEYWORD.test(info.title || '') &&
+            KEYWORD.test(info.h1 || '') &&
+            info.description.length >= 50 &&
+            info.description.length <= 160 &&
+            info.bodyChars >= 900 &&
+            info.headings >= 3 &&
+            absoluteHttps(info.canonical) &&
+            info.linksHome,
+          detail: info.isApp
+            ? 'served the app shell — the page does not exist'
+            : `${info.bodyChars} chars, ${info.headings} sections, canonical=${JSON.stringify(info.canonical)}, description=${info.description.length} chars`
+        });
+      }
 
       checks.push({
         name: 'no console errors',

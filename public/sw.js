@@ -122,5 +122,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  /*
+   * Vercel's own endpoints (`/_vercel/speed-insights/…`, T62) are same-origin but are not this
+   * app: caching the script would serve a stale one, and replaying telemetry from a cache
+   * offline would report timings for a visit that is not happening. Left to the network, which
+   * means it simply does not happen offline — the right answer for measurement.
+   */
+  if (sameOrigin && url.pathname.startsWith('/_vercel/')) {
+    return;
+  }
+
   event.respondWith(isImmutable(url) ? cacheFirst(request) : networkFirst(request));
 });

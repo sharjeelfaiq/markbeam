@@ -70,7 +70,7 @@ Single page, no framework. `src/main.js` is wiring only — it holds the app's m
 
 ```
 src/
-  main.js            entry + wiring — ~900 lines, and growing
+  main.js            entry + wiring — ~2000 lines, and still growing
   defaultDocument.js welcome text
   theme.js           light/dark/system resolution + the print theme swap
   storage.js         all persistence (plain keys) + legacy migrations
@@ -85,6 +85,7 @@ src/
   gitlab.js          the same three calls against GitLab's Repository Files API
   remoteAuth.js      where the remote tokens live, and for how long — one slot per provider
   autoSync.js        when a bound document may be resent, and what a conflict does
+  install.js         when to offer to install the app, and when to stop asking
   editor/            Monaco setup + markbeam-dark/light themes
   markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
                      table.js — parse/edit/format a GFM table, no DOM and no editor
@@ -92,7 +93,7 @@ src/
   export/            pdf.js (banding, and slides), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
                      history, stamp, formatToolbar, outline, remote, gist, style,
-                     present (the slide overlay)
+                     present (the slide overlay), install (the offer banner)
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -116,12 +117,13 @@ There are exactly **two** places the ramp is duplicated, both unavoidable, and a
 change has to be carried into both:
 
 - `src/editor/themes.js` — Monaco takes concrete hex values, not custom properties.
-- `public/about.html` and the `<noscript><style>` block in `index.html` — `public/` is
-  copied verbatim without passing through Vite, so it cannot import `tokens.css`; and every
+- `public/page.css` and the `<noscript><style>` block in `index.html` — `public/` is copied
+  verbatim without passing through Vite, so it cannot import `tokens.css`; and every
   stylesheet is imported by `src/main.js`, so with scripting disabled the page has no CSS at
   all. Both hold ~6 values behind a `prefers-color-scheme` query. The alternative was a
   `vite.config.js` with a second Rollup input, which would reverse the no-config decision
-  below.
+  below. **`page.css` is shared by all five static pages** — it was inline in `about.html`
+  until T61 added four more, at which point one duplication of the ramp beat five.
 
 ### Dependency loading is deliberately inconsistent — respect it
 
@@ -159,6 +161,15 @@ change has to be carried into both:
   `html2pdf` bundle that exposed neither library as a global and left export permanently
   broken whenever the CDN was blocked.
 - Fonts are self-hosted via `@fontsource` and imported in `main.js` — no font CDN.
+- **`@vercel/speed-insights` is imported dynamically and only under `import.meta.env.PROD`**
+  (T62). Two reasons, both load-bearing. Its script lives at
+  `/_vercel/speed-insights/script.js`, which the Vite dev server answers with `index.html`, so
+  a dev-time injection puts a console error into a dozen suites that treat console errors as
+  failures. And the privacy claim is bounded by what actually ships: production carries Web
+  Vitals timings, nothing that identifies a visitor, no cookie, served from this origin.
+  **Vercel Web Analytics was deliberately not added** — per-visitor page-view counting is the
+  thing the promise on `/about` is about. `public/sw.js` skips `/_vercel/` entirely, so
+  telemetry is never cached or replayed from a cache.
 
 ### Pre-paint theme script
 
@@ -266,6 +277,29 @@ stack with it.
 like a bug and is not: GFM requires `\|` for a literal pipe including inside other inline
 spans, so `` `a|b` `` is two cells. Special-casing code spans here would disagree with the
 renderer sitting next to it, and the source would stop meaning what the preview shows.
+
+### The install offer
+
+`src/install.js` is the policy and imports nothing; `src/ui/install.js` is the banner and the
+iOS sheet; `main.js` connects them — the same split as `autoSync.js`, so "when do we interrupt
+someone?" is answerable from one short file.
+
+Three things here are load-bearing:
+
+- **`beforeinstallprompt` is caught at module scope, not in `init()`.** It can fire before
+  `load`, and `init()` runs on `load` — a listener added there misses it on exactly the visits
+  where everything is already cached. The event is stashed because it is the only handle on the
+  real prompt: fireable once, and only from a user gesture, which is why `acceptInstall()` runs
+  straight off the click.
+- **Engagement is counted only when `event.isFlush` is false.** Monaco sets that flag when the
+  model was replaced by `setValue()` — opening a document, restoring a snapshot, resetting, or
+  adopting a share link — and that change event carries the *entire* text. Counting it made the
+  welcome document itself look like 5,700 characters of typing and put the banner on screen the
+  instant anyone arrived. Counting changed characters rather than document length is not enough
+  on its own; `tests/install.test.mjs` covers it.
+- **The banner is not a `<dialog>` and must not become one.** It never blocks the editor, and
+  *Not now* is a real answer: one dismissal buys 14 days, two buys 90, three stops the offer
+  for good. The palette command stays available regardless, so a refusal is never a lock-out.
 
 ### Mermaid rendering
 
@@ -422,9 +456,39 @@ Three rules learned the hard way here:
 Vercel builds from source (`vercel.json`, framework `vite`). **`dist/` is gitignored** — do
 not commit build output.
 
+### The domain
+
+The site is **`markbeam.app`**, apex, and that is the canonical host everywhere — canonical
+link, OG, Twitter, JSON-LD, sitemap, robots, the CI smoke target. Three things about it are
+load-bearing:
+
+- **Apex, not `www`.** Vercel's *primary domain* setting decides which of the pair redirects
+  to the other, and the canonical tag must name the one that answers **200**. It shipped the
+  other way round — `markbeam.app` 308ing to `www.markbeam.app` — which is why this is written
+  down: a canonical pointing at a redirect is a canonical pointing at nothing.
+  **Never add a `www.markbeam.app → markbeam.app` rule to `vercel.json`.** While the dashboard
+  redirects apex → www, that pair is a redirect loop. www is the dashboard's job.
+- **`markbeam.vercel.app` 308s to the apex**, via a host-conditioned rule in `vercel.json`
+  rather than a dashboard setting, so a diff shows it. Every link posted before the move still
+  works, and the two hosts stop competing for the same content. CI asserts the redirect
+  separately from the site being up.
+- **`vercel.json` sets response headers** — HSTS (2 years, `includeSubDomains`, `preload`),
+  `nosniff`, `strict-origin-when-cross-origin`, `X-Frame-Options: DENY` and a
+  `Permissions-Policy` denying camera, microphone and geolocation. Worth knowing so nobody
+  over-claims what HSTS buys here: **`.app` is on the HSTS preload list as a whole TLD**, so
+  browsers already refuse plain HTTP to any `.app` host. The header covers subdomains and
+  satisfies the preload requirements; it is not what makes the site HTTPS-only.
+  There is **no CSP yet** — that is T59, and it needs measuring against the Monaco CDN origin,
+  the inline pre-paint script, Monaco's injected `<style>`, the user stylesheet and eval use
+  inside mermaid/jspdf/html2canvas-pro before it can be turned on.
+
+`tests/tooling.test.mjs` fails if a served file still names the old host, if the redirect rule
+is missing from `vercel.json`, or if CI stops pointing at the canonical host. That check is
+what makes the file list in the `index.html` comment trustworthy rather than aspirational.
+
 `.github/workflows/ci.yml` gates deployment on the suite: `verify` → `check-secrets` →
 `deploy`, and a push to `main` only reaches Vercel if every suite passed. The smoke test at
-the end curls **the production alias** (`markbeam.vercel.app`), never the per-deployment URL
+the end curls **the production alias** (`markbeam.app`), never the per-deployment URL
 that `vercel deploy` prints — deployment URLs on a team sit behind Vercel's Deployment
 Protection and answer an anonymous request with a 302 to SSO, or a 404 in the window right
 after deploy. Pointing the check at one produced a hard CI failure on a deployment that was
@@ -438,7 +502,9 @@ frequent, and a nine-minute browser suite plus a production deploy prove nothing
 Three things to know before editing that list:
 
 - **Never add `public/**` or a blanket `**/*.md`.** Everything under `public/` is site content
-  copied verbatim into the build — `public/about.html` is a real page — so ignoring it would
+  copied verbatim into the build — `about.html` and the four topic pages (`markdown-viewer`,
+  `markdown-to-pdf`, `mermaid-diagrams`, `markdown-slides`) are real pages, listed in
+  `sitemap.xml` and smoke-tested by CI under their `cleanUrls` spellings — so ignoring it would
   silently skip deploying a content change.
 - **The two lists are duplicated on purpose.** GitHub Actions does not support YAML anchors,
   so `&docs` / `*docs` fails to parse. Keep them in step by hand.

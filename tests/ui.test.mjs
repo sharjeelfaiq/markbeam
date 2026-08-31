@@ -454,34 +454,50 @@ export const suite = {
         pass: mobile.overflow === false
       });
 
-      // ---- source link ----
+      /*
+       * ---- the status bar leaves this origin nowhere ----
+       *
+       * A repository link with an inline GitHub icon used to live here, and this check used
+       * to assert it. It is asserted absent rather than deleted: the property the old check
+       * was really defending — the status bar makes no third-party request and offers no
+       * off-origin destination — still matters, and a deleted check defends nothing. The
+       * About link stays and is covered by `tests/seo.test.mjs`.
+       */
       await page.setViewport({ width: 1400, height: 900 });
       await sleep(500);
-      const source = await page.evaluate(() => {
-        const el = document.querySelector('#source-link');
-        if (!el) {
+      const statusbar = await page.evaluate(() => {
+        const footer = document.querySelector('.statusbar');
+        if (!footer) {
           return null;
         }
-        const r = el.getBoundingClientRect();
+        const anchors = [...footer.querySelectorAll('a')];
         return {
-          href: el.getAttribute('href'),
-          rel: el.getAttribute('rel') || '',
-          visible: r.width > 0 && r.height > 0,
-          inlineSvg: !!el.querySelector('svg'),
-          // an external badge image would defeat the point of inlining it
-          externalImg: !!el.querySelector('img')
+          sourceLink: !!document.querySelector('#source-link'),
+          // Anything resolving off this origin, however it is written.
+          external: anchors
+            .map((a) => a.href)
+            .filter((href) => {
+              try {
+                return new URL(href, location.href).origin !== location.origin;
+              } catch (error) {
+                return false;
+              }
+            }),
+          images: footer.querySelectorAll('img').length,
+          about: anchors.filter((a) => /about/i.test(a.getAttribute('href') || '')).length
         };
       });
       checks.push({
-        name: 'source link points at the repository, with an inline icon',
+        name: 'the status bar links nowhere off this origin',
         pass:
-          !!source &&
-          source.visible &&
-          source.href === 'https://github.com/sharjeelfaiq/markbeam' &&
-          source.inlineSvg &&
-          !source.externalImg &&
-          source.rel.includes('noopener'),
-        detail: source ? `${source.href} (rel="${source.rel}")` : 'not found'
+          !!statusbar &&
+          statusbar.sourceLink === false &&
+          statusbar.external.length === 0 &&
+          statusbar.images === 0 &&
+          statusbar.about === 1,
+        detail: statusbar
+          ? `#source-link=${statusbar.sourceLink}, external=${JSON.stringify(statusbar.external)}, about=${statusbar.about}`
+          : 'no status bar'
       });
 
       /*
@@ -507,12 +523,50 @@ export const suite = {
       });
       await sleep(2500);
 
+      /*
+       * `revealInPreview()` scrolls the pane with `behavior: 'smooth'`, so the measurement has
+       * to wait for the animation, and a fixed sleep is the wrong instrument: the duration
+       * scales with the distance, and the welcome document got long enough that 700ms landed
+       * mid-flight. Measured that way it reads as an *overshoot* — the target still above the
+       * pane top, `-6px` — which looks like a product bug and is not one.
+       *
+       * So: settle on the pane's own scrollTop, five unchanged frames, with a ceiling in case
+       * the pane never moves at all (a jump that does nothing must fail the check below, not
+       * hang the suite).
+       */
+      const settle = () =>
+        page.evaluate(
+          () =>
+            new Promise((resolve) => {
+              const pane = document.querySelector('.pane--preview');
+              if (!pane) {
+                resolve();
+                return;
+              }
+              const ceiling = setTimeout(resolve, 4000);
+              let last = -1;
+              let stable = 0;
+              const tick = () => {
+                const now = Math.round(pane.scrollTop);
+                stable = now === last ? stable + 1 : 0;
+                last = now;
+                if (stable >= 5) {
+                  clearTimeout(ceiling);
+                  resolve();
+                  return;
+                }
+                requestAnimationFrame(tick);
+              };
+              requestAnimationFrame(tick);
+            })
+        );
+
       const jump = async (selector) => {
         await page.evaluate((sel) => {
           document.documentElement.scrollTop = 0;
           document.querySelector(sel)?.click();
         }, selector);
-        await sleep(700);
+        await settle();
         return page.evaluate(() => ({
           rootScroll: Math.round(document.documentElement.scrollTop),
           toolbarTop: Math.round(document.querySelector('.toolbar')?.getBoundingClientRect().top ?? NaN),

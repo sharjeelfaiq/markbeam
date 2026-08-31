@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Markbeam — Online Markdown Editor with Live Preview</title>
-    <meta name="description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, no signup, in your browser.">
+    <title>Markbeam — Online Markdown Editor & Viewer with Live Preview</title>
+    <meta name="description" content="Open or write Markdown and watch it render as you type. Live preview, Mermaid diagrams, maths, slides and PDF export — free, no signup, nothing uploaded.">
     <meta name="color-scheme" content="dark light">
 
     <script>
@@ -41,16 +41,29 @@
     <!-- ===================================================================
          Search and social metadata.
 
-         CHANGING THE DOMAIN: replace `https://markbeam.vercel.app` in this
-         block — six occurrences, all within these tags — and in three other
+         The canonical host is the **apex**, `markbeam.app`. Vercel redirects
+         `www` to it, and the old platform alias 308s here via the rule in
+         vercel.json (named there and in CLAUDE.md, deliberately not repeated
+         in the page a visitor is served) — a canonical naming a host that
+         redirects is a canonical pointing at nothing, which is why the
+         apex/www choice is settled in the dashboard and reflected here.
+
+         CHANGING THE DOMAIN: replace `https://markbeam.app` in this
+         block — six occurrences, all within these tags — and in five other
          files that also carry absolute URLs and cannot reference this one:
 
-             public/about.html    (canonical + og:url + og:image)
-             public/robots.txt    (Sitemap:)
-             public/sitemap.xml   (both <loc> entries)
+             public/about.html          (canonical + og:url + og:image)
+             public/markdown-*.html     (canonical + og:url + og:image, each)
+             public/mermaid-diagrams.html
+             public/robots.txt          (Sitemap:)
+             public/sitemap.xml         (every <loc> entry)
+             vercel.json                (the redirect off the old host)
+             .github/workflows/ci.yml   (PRODUCTION_URL + environment url)
 
-         Those three are static files copied verbatim, so they have no way to
-         read a value from here. Grep for the host before declaring it done.
+         The public/ three are static files copied verbatim, so they have no
+         way to read a value from here. `tests/tooling.test.mjs` fails if any
+         of them is missed — that check is the reason this list can be trusted
+         rather than merely hoped at.
 
          Why the URL is repeated rather than held in a variable: social
          scrapers (Slack, Twitter, iMessage) do not run JavaScript, so these
@@ -61,22 +74,22 @@
          `vite.config.*` (see CLAUDE.md), so there is no transformIndexHtml
          hook to put it in.
          =================================================================== -->
-    <link rel="canonical" href="https://markbeam.vercel.app/">
+    <link rel="canonical" href="https://markbeam.app/">
 
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Markbeam">
-    <meta property="og:title" content="Markbeam — Online Markdown Editor with Live Preview">
-    <meta property="og:description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, in your browser.">
-    <meta property="og:url" content="https://markbeam.vercel.app/">
-    <meta property="og:image" content="https://markbeam.vercel.app/og.png">
+    <meta property="og:title" content="Markbeam — Online Markdown Editor & Viewer with Live Preview">
+    <meta property="og:description" content="Open or write Markdown and watch it render as you type. Live preview, Mermaid diagrams, maths, slides and PDF export — free, in your browser.">
+    <meta property="og:url" content="https://markbeam.app/">
+    <meta property="og:image" content="https://markbeam.app/og.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="The Markbeam editor: Markdown source on the left, rendered output on the right.">
 
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Markbeam — Online Markdown Editor with Live Preview">
-    <meta name="twitter:description" content="Write Markdown and watch it render as you type. Live preview, Mermaid diagrams, math, and PDF, HTML and Word export — free, in your browser.">
-    <meta name="twitter:image" content="https://markbeam.vercel.app/og.png">
+    <meta name="twitter:title" content="Markbeam — Online Markdown Editor & Viewer with Live Preview">
+    <meta name="twitter:description" content="Open or write Markdown and watch it render as you type. Live preview, Mermaid diagrams, maths, slides and PDF export — free, in your browser.">
+    <meta name="twitter:image" content="https://markbeam.app/og.png">
 
     <!-- Structured data. Deliberately no `aggregateRating` or `review`: there
          are no ratings to report, and inventing them is both a lie and a
@@ -86,8 +99,9 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Markbeam",
+        "alternateName": "Markdown Viewer",
         "description": "An online Markdown editor with live preview, Mermaid diagrams, math rendering and export to PDF, HTML, Word and Markdown. Runs entirely in the browser.",
-        "url": "https://markbeam.vercel.app/",
+        "url": "https://markbeam.app/",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Any",
         "browserRequirements": "Requires JavaScript",
@@ -99,12 +113,17 @@
         },
         "featureList": [
           "Live Markdown preview",
+          "Opens and reads .md files locally, with nothing uploaded",
           "Mermaid diagrams",
           "LaTeX math rendering",
+          "Table editing: add and remove rows and columns, set column alignment",
+          "Presentation mode with slide export to PDF",
           "Paste or drop images, processed and stored locally",
           "Export to PDF, HTML, Word and Markdown",
+          "Custom preview CSS",
           "Shareable links",
-          "Autosave history",
+          "Autosave history and a recoverable trash",
+          "Optional sync to a GitHub or GitLab repository, or a Gist",
           "Documents stored locally, with no account and nothing uploaded",
           "Works offline after the first visit"
         ]
@@ -121,7 +140,7 @@
     <noscript>
       <style>
         body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.6; }
-        .toolbar, .pane-tabs, .workspace, .statusbar, .toasts { display: none; }
+        .toolbar, .pane-tabs, .workspace, .statusbar, .toasts, .install { display: none; }
         .noscript { max-width: 42rem; margin: 0 auto; padding: 3rem 1.25rem; }
         .noscript h1 { font-size: 1.75rem; line-height: 1.2; }
         .noscript a { color: #0d9488; }
@@ -153,7 +172,8 @@
         <h1>Markbeam — online Markdown editor with live preview</h1>
         <p>
           Markbeam renders Markdown as you type: source on the left, formatted output on the
-          right. It supports GitHub-Flavored Markdown, Mermaid diagrams, LaTeX math, callouts
+          right. It doubles as a Markdown viewer — drop a <code>.md</code> file on the window
+          and read it rendered, without uploading it anywhere. It supports GitHub-Flavored Markdown, Mermaid diagrams, LaTeX math, callouts
           and task lists, and exports to PDF, HTML, Word and Markdown. Documents are stored in
           your own browser — there is no account and nothing is uploaded.
         </p>
@@ -407,24 +427,54 @@
         <span id="save-label">Saved</span>
       </span>
 
+      <!-- The only link in the status bar, and it stays: `tests/seo.test.mjs` requires the
+           app to link to the landing page, or nothing does. A repository link used to sit
+           beside it; it is gone, and with it the last anchor pointing off this origin. -->
       <a class="statusbar__item" href="/about.html" title="What Markbeam does">About</a>
-
-      <!-- Inline SVG rather than a shields.io image: an external badge would be a
-           third-party request on every page load, which is exactly what was removed
-           when the analytics tag, the CDN script and Google Fonts went. -->
-      <a
-        class="statusbar__item source-link"
-        id="source-link"
-        href="https://github.com/sharjeelfaiq/markbeam"
-        target="_blank"
-        rel="noopener noreferrer"
-        title="View source on GitHub">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
-        </svg>
-        Source
-      </a>
     </footer>
+
+    <!-- The install offer (T60). Hidden until `src/install.js` says the visitor has earned it:
+         typed something real, stayed a while, or come back. Not a <dialog> on purpose — it sits
+         above the status bar and never blocks the editor to ask a favour. -->
+    <div class="install" id="install" role="region" aria-label="Install Markbeam" hidden>
+      <span class="install__mark" aria-hidden="true"></span>
+      <p class="install__text">
+        <strong>Install Markbeam</strong>
+        <span class="install__sub">Opens in its own window and works offline.</span>
+      </p>
+      <div class="install__actions">
+        <button class="btn" id="install-dismiss" type="button">Not now</button>
+        <button class="btn btn--accent" id="install-accept" type="button">Install</button>
+      </div>
+    </div>
+
+    <!-- iOS has no programmatic install — Share → Add to Home Screen is the only route, so
+         these two steps are the whole feature there. The glyph is drawn inline rather than
+         screenshotted: a screenshot of someone else's UI ages badly, and this origin carries
+         no third-party images. -->
+    <dialog class="sheet" id="install-help" aria-label="Add Markbeam to your home screen">
+      <div class="sheet__form">
+        <p class="sheet__intro">
+          Safari installs from its own menu. Two taps:
+        </p>
+        <ol class="install-help__steps">
+          <li>
+            Tap
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 10V2m0 0L5.5 4.5M8 2l2.5 2.5" />
+              <path d="M3.5 8v5.5h9V8" />
+            </svg>
+            <strong>Share</strong>, at the bottom of the screen.
+          </li>
+          <li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+        </ol>
+        <p class="sheet__intro">
+          Markbeam then opens like any other app, with your documents already in it — they live
+          in this browser either way, so nothing moves and nothing uploads.
+        </p>
+        <button class="sheet__submit" id="install-help-close" type="button">Got it</button>
+      </div>
+    </dialog>
 
     <!-- Opened programmatically from the palette and the documents sheet. Hidden rather
          than styled: a bare file input cannot be made to match the toolbar, and the two

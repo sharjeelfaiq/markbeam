@@ -575,17 +575,6 @@ body[data-view='preview'] .pane--preview {
   opacity: 0.6;
 }
 
-.source-link {
-  gap: var(--sp-1);
-  color: var(--text-3);
-  text-decoration: none;
-  transition: color var(--dur-fast) var(--ease);
-}
-
-.source-link:hover {
-  color: var(--text-1);
-}
-
 /* ============================ toasts ============================ */
 
 .toasts {
@@ -1087,10 +1076,106 @@ kbd {
   }
 
   #status-chars,
-  #status-cursor,
-  #source-link {
+  #status-cursor {
     display: none;
   }
+}
+
+/* =========================== install =========================== */
+
+/*
+ * The install offer (T60). Sits above the status bar rather than over the document: it must be
+ * ignorable, and anything that covers the editor to ask a favour has already failed.
+ *
+ * `[hidden]` is spelled out because `display: flex` beats the attribute — the same trap the
+ * presentation overlay below documents, and the one that would leave this on screen forever.
+ */
+.install {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--statusbar-h) + var(--sp-3));
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: min(420px, calc(100vw - var(--sp-4) * 2));
+  padding: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+}
+
+.install[hidden] {
+  display: none;
+}
+
+.install__mark {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--beam);
+  box-shadow: 0 0 0 4px var(--beam-wash);
+}
+
+.install__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-md);
+  color: var(--text-1);
+}
+
+.install__sub {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.install__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-2);
+}
+
+/*
+ * Full width on a phone, and the buttons on their own row. `tests/install.test.mjs` measures
+ * horizontal overflow at 375px, because a fixed element wider than the viewport is the classic
+ * way to give a whole page a sideways scrollbar.
+ */
+@media (max-width: 560px) {
+  .install {
+    left: var(--sp-3);
+    right: var(--sp-3);
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .install__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+.install-help__steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-2);
+  font-size: var(--text-md);
+  line-height: 1.7;
+}
+
+.install-help__steps strong {
+  color: var(--text-1);
+}
+
+.install-help__steps svg {
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
+  color: var(--beam);
 }
 
 /* ========================= presentation ========================= */
@@ -1214,6 +1299,8 @@ kbd {
   .toasts,
   /* Printing while presenting should print the document, not the deck on screen. */
   .present,
+  /* And an install offer is furniture, not content. */
+  .install,
   dialog {
     display: none !important;
   }

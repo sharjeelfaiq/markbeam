@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Markdown slides — present from a .md file in the browser | Markbeam</title>
+    <meta name="description" content="Split Markdown into slides with three dashes, present full-screen with the arrow keys, or export the deck as a PDF with one landscape page per slide.">
+    <meta name="color-scheme" content="dark light">
+
+    <link rel="canonical" href="https://markbeam.app/markdown-slides">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Markdown slides — present from a .md file in the browser">
+    <meta property="og:description" content="Three dashes split slides. Present full-screen with the arrow keys, or export one landscape PDF page per slide.">
+    <meta property="og:url" content="https://markbeam.app/markdown-slides">
+    <meta property="og:image" content="https://markbeam.app/og.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="stylesheet" href="/page.css">
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <nav><a href="/">← Open the editor</a></nav>
+      </header>
+
+      <main>
+        <h1>Slides from a Markdown file, in the browser</h1>
+
+        <p class="lede">
+          A deck is a document with breaks in it. Write the talk as Markdown, separate the
+          slides with three dashes, and present it full-screen — or hand it over as a PDF, one
+          landscape page per slide.
+        </p>
+
+        <h2>Writing the deck</h2>
+        <pre><code># The problem
+
+Nobody reads a 40-page document.
+
+---
+
+# The shape of a fix
+
+- One idea per slide
+- Diagrams where words get long</code></pre>
+        <p>
+          Anything Markdown does works on a slide: lists, tables, code with syntax
+          highlighting, images, maths, and <a href="/mermaid-diagrams">Mermaid diagrams</a>. The
+          slide shows exactly what the preview showed, because it is the rendered preview — the
+          nodes are cloned rather than re-rendered, so nothing can drift between the two.
+        </p>
+
+        <h2>Presenting</h2>
+        <ol class="steps">
+          <li><code>Ctrl</code>+<code>K</code> → <em>Present slides…</em></li>
+          <li><code>→</code>, <code>Space</code> or <code>Page Down</code> to advance;
+            <code>←</code> or <code>Page Up</code> to go back; <code>Home</code> and
+            <code>End</code> to jump to either end.</li>
+          <li><code>Esc</code> leaves, and the cursor goes back where it was.</li>
+        </ol>
+        <p>
+          The overlay asks for full screen and carries on without it if the browser refuses —
+          a deck that fills the window is still a deck. One slide is on screen at a time, at a
+          readable width rather than stretched across a wide monitor.
+        </p>
+
+        <h2>Exporting the deck</h2>
+        <p>
+          <code>Ctrl</code>+<code>K</code> → <em>Export slides as PDF…</em> gives one landscape
+          A4 page per slide. Each slide is fitted to the page by aspect ratio and centred, so a
+          two-line slide is not blown up to fill the sheet and a long one is not cut off at the
+          bottom. Like the <a href="/markdown-to-pdf">document export</a>, it renders locally
+          and forces light colours so the file is printable.
+        </p>
+
+        <h2>Why the split is on rendered rules, not on the text</h2>
+        <p>
+          Three dashes in Markdown are not always a slide break. They also underline a setext
+          heading, fence YAML front matter, and mean nothing at all inside a code block.
+          Splitting the source text would break all three. Markbeam splits on the horizontal
+          rules the renderer actually produced, so a <code>---</code> inside a fenced block
+          stays part of your code sample — which is exactly what you would expect, and exactly
+          what the obvious implementation gets wrong.
+        </p>
+
+        <a class="cta" href="/">Write a deck →</a>
+      </main>
+
+      <footer>
+        <nav>
+          <a href="/">Markbeam</a>
+          <a href="/about">About</a>
+          <a href="/markdown-viewer">Markdown viewer</a>
+          <a href="/markdown-to-pdf">Markdown to PDF</a>
+          <a href="/mermaid-diagrams">Mermaid diagrams</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -141,11 +141,11 @@ jobs:
       # The production alias, not the per-deployment URL. Deployment URLs on a team sit
       # behind Vercel's Deployment Protection, so the link in the Environments tab would
       # bounce a reader to an SSO page instead of the site.
-      url: https://markbeam.vercel.app
+      url: https://markbeam.app
 
     env:
       VERCEL_SCOPE: dev-projects-816
-      PRODUCTION_URL: https://markbeam.vercel.app
+      PRODUCTION_URL: https://markbeam.app
 
     steps:
       - uses: actions/checkout@v5
@@ -206,7 +206,13 @@ jobs:
 
           # public/ is only served correctly by the real host, never by the dev server the
           # suites use — so this is the one place a missing static file can be caught.
-          for path in robots.txt sitemap.xml og.png about; do
+          paths="robots.txt sitemap.xml og.png page.css about"
+          # The topic pages (T61). Clean URLs, which only the real host serves — the dev
+          # server the suites use knows nothing about `cleanUrls`, so this is the only place
+          # a page that failed to deploy under its published URL can be caught.
+          paths="$paths markdown-viewer markdown-to-pdf mermaid-diagrams markdown-slides"
+
+          for path in $paths; do
             live=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL/$path" || echo "000")
             case "$live" in
               200) echo "  ok   /$path" ;;
@@ -223,3 +229,30 @@ jobs:
           fi
 
           echo "Live and healthy: $PRODUCTION_URL"
+
+      # The old platform alias must keep 308ing to the domain (T58). Two hosts serving the
+      # same content splits crawl signals, and every link posted before the move points at
+      # the old one — a redirect that silently stops working is the kind of thing nobody
+      # notices for months, and it costs one curl to check.
+      - name: The old alias still redirects here
+        run: |
+          headers=$(curl -sI https://markbeam.vercel.app/ || true)
+          code=$(printf '%s' "$headers" | head -n 1 | awk '{print $2}')
+          location=$(printf '%s' "$headers" | grep -i '^location:' | tr -d '\r' | awk '{print $2}')
+
+          case "$code" in
+            301|308) ;;
+            *)
+              echo "::error::markbeam.vercel.app returned $code, expected a permanent redirect"
+              printf '%s\n' "$headers"
+              exit 1
+              ;;
+          esac
+
+          case "$location" in
+            https://markbeam.app/*) echo "  ok   old alias -> $location" ;;
+            *)
+              echo "::error::old alias redirects to '$location', not the canonical host"
+              exit 1
+              ;;
+          esac

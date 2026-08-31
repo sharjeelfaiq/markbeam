@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Markdown to PDF — export in the browser, with real page breaks | Markbeam</title>
+    <meta name="description" content="Turn Markdown into a paginated PDF in your browser. Page breaks fall between blocks, diagrams and tables stay whole, and nothing is uploaded to convert it.">
+    <meta name="color-scheme" content="dark light">
+
+    <link rel="canonical" href="https://markbeam.app/markdown-to-pdf">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Markdown to PDF — export in the browser, with real page breaks">
+    <meta property="og:description" content="Paginated PDF export from Markdown, done locally: page breaks fall between blocks and nothing is uploaded.">
+    <meta property="og:url" content="https://markbeam.app/markdown-to-pdf">
+    <meta property="og:image" content="https://markbeam.app/og.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="stylesheet" href="/page.css">
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <nav><a href="/">← Open the editor</a></nav>
+      </header>
+
+      <main>
+        <h1>Markdown to PDF, without uploading the document</h1>
+
+        <p class="lede">
+          Most Markdown-to-PDF converters post your text to a server and send a file back.
+          Markbeam renders the PDF in the page you are already looking at, so the document never
+          leaves the browser — and the pages break where a person would break them.
+        </p>
+
+        <h2>Exporting</h2>
+        <ol class="steps">
+          <li>Open or paste your Markdown.</li>
+          <li>Press <code>Ctrl</code>+<code>S</code>, or <code>Ctrl</code>+<code>K</code> →
+            <em>Export as PDF</em>.</li>
+          <li>The button counts pages as it works; the file downloads when it reaches the
+            last one.</li>
+        </ol>
+        <p>
+          Long documents take a moment: roughly 3 seconds for 18 pages, 5 for 35, 20 for 69 on
+          an ordinary laptop. That time is rasterisation, and it is spent on your machine rather
+          than queued behind other people's documents on someone's server.
+        </p>
+
+        <h2>Why the page breaks are the interesting part</h2>
+        <p>
+          A naive export slices the document every A4-height of pixels, which cuts headings in
+          half and splits table rows across pages. Markbeam measures the rendered blocks first
+          and chooses boundaries that fall <em>between</em> them, so a heading travels with the
+          paragraph under it and a code block stays whole. A block taller than a page is split,
+          because there is nowhere else to put it.
+        </p>
+        <p>
+          Diagrams are converted to bitmaps before the page is drawn, which is what stops the
+          right-hand side of a wide Mermaid diagram from being clipped — an artefact of how
+          rasterisers handle inline SVG rather than anything about your document.
+        </p>
+
+        <h2>What the PDF looks like</h2>
+        <ul>
+          <li><strong>Always light.</strong> The export forces the light theme even if you are
+            working in the dark one, because a dark PDF prints as a black rectangle.</li>
+          <li><strong>Fixed width.</strong> Output does not depend on where you left the split
+            divider — the same document gives the same PDF.</li>
+          <li><strong>Links survive</strong>, including a <code>[TOC]</code>, whose entries
+            become internal jumps to the right page.</li>
+          <li><strong>Custom preview CSS is excluded</strong>, deliberately: that export
+            re-parses the stylesheet, and a rule its renderer cannot read produces a blank
+            document rather than an error. Better to exclude it and say so than to hand you a
+            white PDF.</li>
+        </ul>
+
+        <h2>Other ways out</h2>
+        <p>
+          <code>Ctrl</code>+<code>P</code> prints the document rather than the app — no toolbar,
+          no editor pane, light background whatever theme you use. There is also standalone
+          HTML with its styles inlined, Word (<code>.doc</code>), the original Markdown, and
+          <a href="/markdown-slides">one landscape page per slide</a> if the document is a deck.
+          If you only need to read the file first, start with the
+          <a href="/markdown-viewer">viewer</a>.
+        </p>
+
+        <a class="cta" href="/">Export a PDF →</a>
+      </main>
+
+      <footer>
+        <nav>
+          <a href="/">Markbeam</a>
+          <a href="/about">About</a>
+          <a href="/markdown-viewer">Markdown viewer</a>
+          <a href="/mermaid-diagrams">Mermaid diagrams</a>
+          <a href="/markdown-slides">Slides</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>

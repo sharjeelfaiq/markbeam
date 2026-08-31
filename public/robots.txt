@@ -5,4 +5,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://markbeam.vercel.app/sitemap.xml
+Sitemap: https://markbeam.app/sitemap.xml
