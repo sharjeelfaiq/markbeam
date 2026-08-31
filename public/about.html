@@ -109,7 +109,7 @@
         <p class="lede">
           Write Markdown on the left and watch it render on the right. No account, no waiting —
           your documents are stored in your own browser and stay there unless you connect them
-          to a GitHub repository yourself.
+          to a GitHub or GitLab repository yourself.
         </p>
 
         <img src="/og.png" alt="The Markbeam editor with Markdown source on the left and rendered output on the right." width="1200" height="630">
@@ -155,11 +155,22 @@
           deletion is recoverable.
         </p>
         <p>
-          The one exception is one you switch on: <strong>Save to GitHub</strong> sends the
-          document you are editing to a repository you name, using a token you supply. Nothing
-          is sent before you connect, nothing syncs in the background, and every request
-          happens because you just asked for one. The token is kept only until the tab closes
-          unless you tick <em>remember on this device</em>.
+          <strong>The one exception is a repository you connect yourself.</strong> Saving and
+          opening are manual: each one happens because you just asked for it. If you also switch
+          on <em>automatic sync</em>, a document you have <em>already</em> saved to a repository
+          is sent again when you stop typing — only that document, only after a change, and
+          never one you have not saved there yourself. It is off until you turn it on, and
+          turning it off stops it immediately.
+        </p>
+        <p>
+          Markbeam never merges. If the file changed in the repository since you last wrote it,
+          your version and theirs are both kept as separate documents and you choose — nothing
+          is overwritten on either side.
+        </p>
+        <p>
+          The token you supply is kept only until the tab closes, unless you tick
+          <em>remember on this device</em>. It is sent as an authorisation header and never in a
+          web address, so it stays out of your browser history and out of anyone's logs.
         </p>
 
         <h2>Questions people actually ask</h2>

@@ -157,7 +157,12 @@ export const readFile = async (token, { owner, repo }, path) => {
     return { ok: false, reason: `“${path}” could not be decoded as text` };
   }
 
-  return { ok: true, text, sha: payload.sha, path: payload.path || path };
+  /*
+   * `id` is the same field as `sha`, named for what auto-sync uses it for: "has the remote
+   * moved since we last wrote". GitLab has no sha to offer, so the shared name is what lets
+   * one code path serve both providers.
+   */
+  return { ok: true, text, sha: payload.sha, id: payload.sha, path: payload.path || path };
 };
 
 /*

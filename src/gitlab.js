@@ -127,7 +127,13 @@ export const readFile = async (token, project, path, branch = DEFAULT_BRANCH) =>
     return { ok: false, reason: `“${path}” could not be decoded as text` };
   }
 
-  return { ok: true, text, path };
+  /*
+   * `last_commit_id` is GitLab's answer to "has this file moved", and is reported as `id` to
+   * match the GitHub client — see the note there. `content_sha256` would also work, but it
+   * changes only when the bytes change, so two people writing identical text would look like
+   * no conflict at all.
+   */
+  return { ok: true, text, id: payload.last_commit_id || null, path };
 };
 
 /*

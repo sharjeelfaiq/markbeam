@@ -30,41 +30,11 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P2 — Bigger bets, decide before building
 
-### [ ] T49 · Automatic sync, and what happens on a conflict
-
-**Why:** StackEdit syncs every few minutes and merges automatically. T37 chose manual on
-purpose — every request happens because someone asked for one, which is what makes the privacy
-claim on `/about` checkable in the network panel rather than merely asserted.
-
-**Decide before writing code.** Automatic sync means change detection, a merge strategy, and a
-conflict UI for the same document edited on two machines. Every failure mode in that list ends
-with someone losing a document, which is why T37 deliberately did not start here. It also
-quietly weakens the "nothing is sent unless you ask" wording that shipped with T37 — that
-sentence would need revisiting in the same commit, exactly as T37 revisited the previous one.
+*Empty — T49 is done. New bets go here.*
 
 ---
 
 ## P3 — Housekeeping
-
-### [ ] T50 · A real table editor — an advantage, not parity
-
-**Why:** *flagged as ahead of the competitor rather than catching up.* StackEdit has had an open
-request for a table editor for years. We already insert a table from the toolbar (T39); editing
-one is the missing half, and Markdown tables are the single most tedious thing to maintain by
-hand.
-
-**Done when:** an existing table can have rows and columns added, removed and realigned without
-hand-counting pipes, the source stays readable afterwards, and a cell containing a pipe is still
-escaped correctly.
-
-### [ ] T51 · Presentation mode — an advantage, not parity
-
-**Why:** *flagged as ahead.* Neither editor has one. Slides split on `---` would reuse machinery
-that already exists: the print stylesheet knows how to show the document without the app, and
-the PDF exporter already computes page boundaries that fall between blocks.
-
-**Done when:** a document can be presented full-screen one slide at a time, keyboard navigable,
-and exported to a paginated PDF one slide per page.
 
 ### [ ] T52 · GitHub sync has never met the real API
 
@@ -142,6 +112,130 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T49 · Automatic sync, and what happens on a conflict — 2026-08-31
+
+**Why:** StackEdit syncs every few minutes and merges automatically. T37 chose manual on purpose,
+because every request happening at someone's request is what makes the claim on `/about` checkable
+in the network panel rather than merely asserted.
+
+**The decision, which was the task.** The timer is bounded on three sides, and each bound is a
+failure someone else's autosync has:
+
+- **Off unless enabled.** `loadAutoSync()` defaults to false, so anyone who never touches it sees
+  exactly the T37 behaviour and an empty network panel.
+- **Bound documents only.** A document becomes eligible only once a *manual* save has created a
+  binding for it. The timer may repeat a decision the user already made; it may not make one. This
+  is what stops files appearing in a repository nobody sent them to.
+- **Changed, then idle** — 3s after typing stops (`IDLE_MS`, `src/autoSync.js`), never an
+  interval. A blind timer resends unchanged documents and makes the network panel unreadable,
+  which would cost the exact property being defended.
+
+**There is no merge, and there must not be one.** On a conflict the remote copy is added as a new
+document beside the local one and the user picks — the rule pulls already followed. A merge that is
+wrong once costs someone a document; there is no version of "mostly right" here that is worth the
+tail. Detection needed an identifier both services can supply, so `readFile()` in both clients now
+returns `id`: GitHub's `sha`, GitLab's `last_commit_id`. Not GitLab's `content_sha256` — it changes
+only when the bytes do, so two people writing identical text would look like no conflict at all.
+
+`src/autoSync.js` imports nothing and `main.js` injects the clients, so the whole policy is
+checkable by reading one 147-line file.
+
+**Measured:** off — `0 request(s) after an edit`. On and bound — `1 write(s) after one edit`, then
+`0 extra write(s) with nothing edited`. Moved remote — `0 write(s) against a moved remote`,
+`1 -> 2 documents`, and the editor still holds the local text. Unbound document —
+`0 write(s)`. The token is still `not stored` when a timer is the thing using it.
+
+**Still open:** neither client has met the real API — **T52**.
+
+### [x] T50 · A real table editor — an advantage, not parity — 2026-08-31
+
+**Why:** *ahead of the reference rather than catching up.* StackEdit has had an open request for
+one for years. T39 already inserted a table; editing one was the missing half, and Markdown tables
+are the most tedious thing in the format to maintain by hand.
+
+**A pipe splits a cell unless it is backslash-escaped — even inside backticks.** That reads like a
+bug and is not: GFM requires `\|` for a literal pipe *including inside other inline spans*, so
+`` `a|b` `` is two cells. Special-casing code spans in `src/markdown/table.js` would disagree with
+the renderer sitting next to it, and the source would stop meaning what the preview shows. The
+split is a scan rather than `split(/(?<!\\)\|/)`, because the regex leaves the backslash in the
+cell and it reappears doubled on the next round trip.
+
+`table.js` is pure — lines in, lines out — so the awkward half is tested without a browser.
+`main.js` maps the cursor to a row and column, so *add row* lands under the row you are on rather
+than at the bottom, and applies the result as one range through `executeEdits`: `setValue` would
+drop the cursor and the undo stack, turning one edit into an unundoable rewrite.
+
+**Measured:** `` `a\|b` `` survives a round trip byte-identical; an unescaped pipe inside backticks
+splits (`["`a","b`","second"]`), matching the renderer; output comes back padded
+(`| longer cell | c   |`); rows `2 -> 3 -> 2`; columns applied across every row (`header 3, rows
+3,3`); removing the last column is refused, since a table without a column is not one; a run of
+piped lines with no delimiter row is correctly not a table.
+
+### [x] T51 · Presentation mode — an advantage, not parity — 2026-08-31
+
+**Why:** *ahead.* Neither editor has one, and the pieces existed already — a preview that renders
+without the app, and an exporter that already thinks in pages.
+
+**Slides are cut on the rendered `<hr>`, never on the source `---`.** In Markdown those three
+characters are also a setext heading underline and a front-matter fence, and inside a fenced block
+they are just characters. The renderer has already decided which, so reading its output is the only
+split that agrees with what the user sees. `tests/present.test.mjs` puts a `---` inside a fenced
+block for exactly this reason: it is the check the obvious implementation fails, and it fails
+silently — the deck simply gains slides nobody wrote.
+
+Slides are **cloned** from `#output` rather than re-rendered, the same reasoning the PDF sandbox
+uses: a clone carries the already-rendered Mermaid SVGs and KaTeX verbatim, and re-parsing is a
+second chance to disagree with the preview.
+
+`exportSlidesToPdf()` shares the page exporter's preamble (user CSS off, Mermaid forced light,
+`decorateClone`, SVG-to-bitmap) and none of its machinery: no page offsets, no banding, because a
+slide *is* a page. One landscape A4 page, one `html2canvas` call and one sandbox per slide. The
+bitmap is fitted by aspect ratio and centred — stretching would blow a two-line slide up to fill
+the page, and clipping would lose the bottom of a long one, which is a thing you discover on stage.
+
+Full screen is **requested, not required**: it needs a user gesture and is refused outright in some
+contexts, and a deck that fills the window is still a deck. A refusal must not take the feature
+down with it.
+
+**Measured:** the fenced-`---` document yields `3 slides (3 expected)`, `1 visible` at a time,
+arrows move both ways, Escape closes, and the export produces `3 page(s) for 3 slides` — counted
+by instrumenting `toDataURL`, so it counts bitmaps actually drawn rather than pages jsPDF claims.
+Zero console errors in both passes.
+
+### Verify vs reference — T49, T50, T51
+
+All three are features the reference does not have, so the comparison is absence versus presence.
+
+*On the reference* — https://markdownlivepreview.com has no account and no sync of any kind, no
+table editing beyond retyping the pipes (adding a column means editing every row by hand), and no
+presentation mode: the only way to show a document is to show the editor.
+
+*On ours* — http://localhost:5173:
+
+- **T49.** Connect a repository, save a document manually once, then `Ctrl+K` →
+  *Turn on automatic sync*. Type, stop, and watch the network panel: **one** `PUT`, about three
+  seconds after the last keystroke. Keep waiting — nothing else fires, because it is idle-driven
+  rather than an interval. Then create a *new* document and type in it: no request at all, ever,
+  because it has never been saved to a repository. The precondition is the point, so state it
+  before testing: with the toggle off, or the document unbound, the correct result is an empty
+  network panel no matter how long you type.
+  ```js
+  JSON.parse(localStorage.getItem('markbeam:auto_sync')).v          // false until switched on
+  Object.keys(JSON.parse(localStorage.getItem('markbeam:remote_bindings')).v)  // only manually saved docs
+  ```
+  For the conflict: edit the file in the repository's web UI, then edit locally and pause. The
+  document count goes **up by one** — your text stays in the editor, theirs arrives beside it as
+  *"<name> (from GitHub)"*. Nothing is overwritten in either direction.
+- **T50.** Put the cursor inside a table → `Ctrl+K` → *Table: add column*. Every row gains a cell
+  and the source comes back aligned. One `Ctrl+Z` undoes the whole thing, which is the visible
+  proof it went through `executeEdits` rather than `setValue`. Type `` | `a\|b` | x | `` and check
+  the preview shows a single cell containing `a|b` — then remove the backslash and watch it become
+  two cells, in the preview *and* in the editor, together.
+- **T51.** Separate blocks with `---`, then `Ctrl+K` → *Present slides…*: full screen, one slide
+  at a time, `←`/`→`/`Space`/`Home`/`End`, `Esc` to leave. Put a `---` inside a fenced code block
+  first — it must **not** create a slide. Then *Export slides as PDF…*: one landscape page per
+  slide, light-themed even from a dark app.
 
 ### [x] T45 · Deleting a document destroys its history with it — 2026-08-31
 

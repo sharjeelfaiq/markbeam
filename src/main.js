@@ -21,7 +21,7 @@ import {
   restoreScreenDiagrams,
   scheduleMermaidRender
 } from './mermaid/index.js';
-import { exportPreviewToPdf, filenameFromTitle } from './export/pdf.js';
+import { exportPreviewToPdf, exportSlidesToPdf, filenameFromTitle } from './export/pdf.js';
 import { buildStandaloneHtml, buildWordDocument } from './export/document.js';
 import { downloadText } from './export/download.js';
 import { copyPreviewAsHtml } from './export/html.js';
@@ -51,6 +51,10 @@ import {
   loadMarkdownMode,
   loadTypography,
   saveTypography,
+  loadAutoSync,
+  saveAutoSync,
+  loadRemoteBindings,
+  saveRemoteBindings,
   loadCustomCss,
   saveCustomCss,
   loadScrollSync,
@@ -71,7 +75,20 @@ import { initRemote, openConnect, openFiles as openRemoteFiles } from './ui/remo
 import { initSearch, open as openSearchSheet } from './ui/search.js';
 import { rememberDeleted, restoreDeleted } from './trash.js';
 import { initStyle, open as openStyleSheet } from './ui/style.js';
+import { initPresent, open as openPresent } from './ui/present.js';
 import { scopeCustomCss } from './customCss.js';
+import { createAutoSync } from './autoSync.js';
+import {
+  addColumn,
+  addRow,
+  columnAt,
+  cycleAlign,
+  findTableAt,
+  formatTable,
+  parseTable,
+  removeColumn,
+  removeRow
+} from './markdown/table.js';
 import * as github from './github.js';
 import * as gitlab from './gitlab.js';
 import { createGist } from './github.js';
@@ -142,6 +159,8 @@ const init = () => {
   let scrollSync = loadScrollSync();
   let markdownMode = loadMarkdownMode();
   let typography = loadTypography();
+  let autoSyncOn = loadAutoSync();
+  let remoteBindings = loadRemoteBindings();
   let exporting = false;
 
   /*
@@ -247,6 +266,9 @@ const init = () => {
         activeDocId === scheduledFor ? editor.getValue() : null
       );
     }
+
+    // Silent unless auto-sync is on *and* this document has been saved to a repository.
+    autoSync.noteChange(activeDocId);
 
     // Kept in step so a downgrade still opens the document the user was last editing.
     saveContent(value);
@@ -418,6 +440,21 @@ const init = () => {
     if (!silent) {
       toast('New document');
     }
+    return id;
+  };
+
+  /*
+   * Adds a document without opening it. `createDocument()` deliberately switches to what it
+   * creates, which is right for "New document" and wrong for a conflict copy: the whole point
+   * there is that the local edit keeps the editor. Nothing else may use this — a document the
+   * user cannot see is a document they will not find.
+   */
+  let addDocumentSilently = (title, text) => {
+    const id = newDocId();
+    documents.unshift({ id, title: title || 'Untitled', updatedAt: Date.now() });
+    saveDoc(id, text || '');
+    persistDocuments();
+    refreshDocuments();
     return id;
   };
 
@@ -990,6 +1027,8 @@ const init = () => {
     }
 
     toast(`Saved ${path} to ${remoteLabel()}`);
+    // The manual save is what creates the binding the timer is later allowed to repeat.
+    await rememberRemoteState(activeDocId, activeProvider(), path);
   };
 
   /*
@@ -1110,6 +1149,172 @@ const init = () => {
       publishGist();
     }
   };
+
+  /*
+   * Automatic sync (T49).
+   *
+   * A binding is created by a *manual* save and never by the timer: the first write of a
+   * document to a repository is a decision, and the timer is only allowed to repeat a decision
+   * that was already made. That is what keeps "nothing is sent unless you ask" true in spirit
+   * once the wording admits the timer.
+   */
+  let bindingFor = (docId) => (docId ? remoteBindings[docId] || null : null);
+
+  let setBindingFor = (docId, binding) => {
+    if (!docId) {
+      return;
+    }
+    if (binding) {
+      remoteBindings[docId] = binding;
+    } else {
+      delete remoteBindings[docId];
+    }
+    saveRemoteBindings(remoteBindings);
+  };
+
+  /*
+   * Re-read after a write so the recorded identifier is the one the remote now holds. GitHub
+   * returns the new sha in the write response and GitLab does not, so reading is what lets one
+   * path serve both rather than growing a branch per provider.
+   */
+  let rememberRemoteState = async (docId, provider, path) => {
+    const target = remoteTarget(provider);
+    if (!target) {
+      return;
+    }
+    const current = await client(provider).api.readFile(getRemoteToken(provider), target, path);
+    setBindingFor(docId, { provider, path, syncedId: current.ok ? current.id : null });
+  };
+
+  let autoSync = createAutoSync({
+    isEnabled: () => autoSyncOn,
+    getBinding: bindingFor,
+    setBinding: setBindingFor,
+    getActiveId: () => activeDocId,
+    getText: (docId) => (docId === activeDocId ? editor.getValue() : loadDoc(docId)),
+    readRemote: (binding) =>
+      client(binding.provider).api.readFile(
+        getRemoteToken(binding.provider),
+        remoteTarget(binding.provider),
+        binding.path
+      ),
+    writeRemote: (binding, text) =>
+      client(binding.provider).api.writeFile(
+        getRemoteToken(binding.provider),
+        remoteTarget(binding.provider),
+        binding.path,
+        text,
+        `Update ${binding.path} from Markbeam`
+      ),
+    /*
+     * The conflict answer, and the reason there is no merge here: the remote copy lands beside
+     * the local one as its own document and the user decides. Overwriting either version is
+     * the one outcome that loses work, so neither is on the table.
+     */
+    onConflict: ({ binding, remoteText }) => {
+      addDocumentSilently(`${titleFromFilename(binding.path)} (from ${remoteLabel(binding.provider)})`, remoteText);
+      toastError(`${binding.path} changed on ${remoteLabel(binding.provider)} — kept both copies`);
+    },
+    /*
+     * Deliberately silent on success. A background operation that announces itself every
+     * time you pause typing is noise, and the status bar already reports saved state.
+     * Failures are the only thing worth interrupting for.
+     */
+    onError: (result) => {
+      if (result.status === 401) {
+        disconnectRemote();
+        openConnect(result.reason);
+        return;
+      }
+      toastError(result.reason || 'Automatic sync failed');
+    }
+  });
+
+  const autoSyncCommand = {
+    title: '',
+    run: () => {
+      autoSyncOn = !autoSyncOn;
+      saveAutoSync(autoSyncOn);
+      syncAutoSyncCommand();
+      if (!autoSyncOn) {
+        autoSync.stop();
+      }
+      toast(
+        autoSyncOn
+          ? 'Automatic sync on — saved documents resync when you pause'
+          : 'Automatic sync off'
+      );
+    }
+  };
+
+  let syncAutoSyncCommand = () => {
+    autoSyncCommand.title = autoSyncOn ? 'Turn off automatic sync' : 'Turn on automatic sync';
+  };
+
+  syncAutoSyncCommand();
+
+  /*
+   * Table editing (T50).
+   *
+   * Every command is the same three steps — find the table the cursor is in, transform it,
+   * write it back — so they are generated from one helper rather than written out five times.
+   * The transform itself lives in `src/markdown/table.js` and knows nothing about Monaco.
+   */
+  let editTable = (transform) => {
+    const model = editor.getModel();
+    const position = editor.getPosition();
+    if (!model || !position) {
+      return;
+    }
+
+    const lines = model.getValue().split('\n');
+    const cursorLine = position.lineNumber - 1;
+    const found = findTableAt(lines, cursorLine);
+
+    if (!found) {
+      toast('Put the cursor in a table first');
+      return;
+    }
+
+    const table = parseTable(lines.slice(found.start, found.end + 1));
+    /*
+     * Row and column are given relative to the table, so "add row" lands under the row the
+     * cursor is on rather than always at the bottom — the difference between an editor and a
+     * button that appends.
+     */
+    const row = cursorLine - found.start - 2;
+    const column = columnAt(lines[cursorLine] || '', position.column - 1);
+
+    const next = formatTable(transform(table, { row, column }));
+
+    /*
+     * Replaced as one range so it is a single undo step. Applied through `executeEdits` rather
+     * than `setValue` because setValue drops the cursor and the undo stack with it.
+     */
+    editor.executeEdits('markbeam-table', [
+      {
+        range: {
+          startLineNumber: found.start + 1,
+          startColumn: 1,
+          endLineNumber: found.end + 1,
+          endColumn: (lines[found.end] || '').length + 1
+        },
+        text: next.join('\n')
+      }
+    ]);
+    editor.focus();
+  };
+
+  const tableCommands = [
+    { title: 'Table: add row', run: () => editTable((t, at) => addRow(t, at.row)) },
+    { title: 'Table: remove row', run: () => editTable((t, at) => removeRow(t, at.row)) },
+    { title: 'Table: add column', run: () => editTable((t, at) => addColumn(t, at.column)) },
+    { title: 'Table: remove column', run: () => editTable((t, at) => removeColumn(t, at.column)) },
+    {
+      title: 'Table: change column alignment',
+      run: () => editTable((t, at) => cycleAlign(t, at.column))
+    }
+  ];
 
   let disconnectFromRemote = () => {
     const label = remoteLabel();
@@ -1320,6 +1525,72 @@ const init = () => {
     }
   };
 
+  /*
+   * Presentation mode (T51).
+   *
+   * The deck is built from `#output` as it stands, so whatever the preview shows — rendered
+   * Mermaid, KaTeX, images — is what appears on a slide. Nothing is re-rendered, which is the
+   * only way a slide cannot disagree with the preview it came from.
+   */
+  let presentSlides = () => {
+    const slides = openPresent(outputElement, {
+      // Focus goes back where it was, or Escape leaves the user typing into nothing.
+      onClose: () => editor.focus()
+    });
+
+    if (!slides) {
+      toast('Nothing to present — separate slides with ---');
+    }
+  };
+
+  /*
+   * The same guard, button and label handling as `exportPdf()`. Written out rather than
+   * folded into it: the two share the chrome and nothing else, and the shared version would
+   * be a function taking a function to decide which exporter to call.
+   */
+  let exportSlides = async () => {
+    if (exporting) {
+      return;
+    }
+    exporting = true;
+
+    const button = document.querySelector('#export-button');
+    const label = button ? button.querySelector('.toolbar__label') : null;
+    const original = label ? label.textContent : '';
+    if (button) {
+      button.disabled = true;
+    }
+
+    try {
+      const result = await exportSlidesToPdf({
+        title: docTitle,
+        onProgress: (slide, total) => {
+          if (label) {
+            label.textContent = `${slide}/${total}`;
+          }
+        }
+      });
+
+      if (!result.pages) {
+        toast('Nothing to export — separate slides with ---');
+      } else {
+        toast(`Exported ${result.pages} slide${result.pages === 1 ? '' : 's'}`);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to export slides', error);
+      toastError('Could not generate the slide PDF');
+    } finally {
+      exporting = false;
+      if (label) {
+        label.textContent = original;
+      }
+      if (button) {
+        button.disabled = false;
+      }
+    }
+  };
+
   let resetDocument = () => {
     if (editor.getValue().trim() && !window.confirm(CONFIRM_RESET)) {
       return;
@@ -1512,9 +1783,13 @@ const init = () => {
     { title: 'Search all documents', keys: 'mod+shift+f', run: openSearch },
     { title: 'Custom preview CSS…', run: openCustomCss },
     { title: 'Document outline', run: openOutline },
+    { title: 'Present slides…', run: presentSlides },
+    { title: 'Export slides as PDF…', run: exportSlides },
     { title: 'Save to a repository…', run: saveToGithub },
     { title: 'Open from a repository…', run: openFromGithub },
     { title: 'Publish as Gist…', run: publishGist },
+    autoSyncCommand,
+    ...tableCommands,
     { title: 'Disconnect repository', run: disconnectFromRemote },
     { title: 'Document history', run: openHistory },
     { title: 'Reset to welcome document', run: resetDocument },
@@ -1600,6 +1875,8 @@ const init = () => {
     getHeadings: collectHeadings,
     onPick: scrollPreviewToHeading
   });
+
+  initPresent();
 
   initHistory({
     getEntries: () => historyFor(activeDocId),

@@ -1,5 +1,7 @@
 import { getTheme } from '../theme.js';
 import { renderMermaidDiagrams, renderMermaidForTheme } from '../mermaid/index.js';
+// Pure grouping of the preview's children; importing it touches no overlay state.
+import { splitIntoSlides } from '../ui/present.js';
 
 /*
  * PDF export.
@@ -423,6 +425,161 @@ export const exportPreviewToPdf = async ({ title = 'Untitled', onProgress } = {}
 
     pdf.save(filenameFromTitle(title));
     return { pages: pages.length, links: tocLinks.length };
+  } finally {
+    if (userCss && userCssWasEnabled) {
+      userCss.disabled = false;
+    }
+    if (sandbox && sandbox.parentNode) {
+      sandbox.parentNode.removeChild(sandbox);
+    }
+    if (restoreDarkMermaid) {
+      renderMermaidForTheme('dark');
+    }
+  }
+};
+
+/* ------------------------------ slides (T51) ------------------------------ */
+
+/** Landscape A4, the same margin as the page export. */
+const SLIDE_WIDTH_MM = 297 - MARGIN_MM * 2;
+const SLIDE_HEIGHT_MM = 210 - MARGIN_MM * 2;
+
+/** Fixed render width for a slide, as CONTENT_WIDTH_PX is for a page. */
+const SLIDE_WIDTH_PX = 960;
+
+/*
+ * An offscreen copy of one slide. Deliberately not `createSandbox()`: that one is a viewport
+ * the document is scrolled through a band at a time, and a slide is the opposite shape — a
+ * whole, short thing that gets its own page. It keeps the same two ids so `decorateClone()`
+ * whitens this background too.
+ *
+ * The height is the greater of the slide box and the content, so a slide with more on it than
+ * fits is scaled down rather than cut off. Losing the bottom of a slide is the failure mode
+ * that would be discovered on stage.
+ */
+let createSlideSandbox = (outputElement, nodes, minHeightPx) => {
+  const sandbox = document.createElement('div');
+  sandbox.id = 'pdf-export-sandbox';
+  sandbox.style.cssText = [
+    'position:fixed',
+    'left:-10000px',
+    'top:0',
+    `width:${SLIDE_WIDTH_PX}px`,
+    'display:flex',
+    'flex-direction:column',
+    'justify-content:center',
+    'background:#fff',
+    'pointer-events:none'
+  ].join(';');
+
+  const content = document.createElement('div');
+  content.id = 'pdf-export-content';
+  content.className = outputElement.className;
+  content.style.cssText = `width:${SLIDE_WIDTH_PX}px;background:#fff`;
+  nodes.forEach((node) => content.appendChild(node.cloneNode(true)));
+
+  sandbox.appendChild(content);
+  document.body.appendChild(sandbox);
+
+  // Measured after insertion, because an unattached element has no layout to measure.
+  sandbox.style.height = `${Math.max(minHeightPx, content.scrollHeight)}px`;
+
+  return { sandbox, content };
+};
+
+/*
+ * One landscape page per slide (T51).
+ *
+ * Simpler than `exportPreviewToPdf()` on purpose: there are no page offsets to compute and no
+ * banding, because a slide *is* a page. The banding in the page export exists to amortise
+ * html2canvas's whole-document clone across several pages; here each slide is one short
+ * element, so one call per slide costs what a band call costs there.
+ *
+ * The split is `splitIntoSlides()`, which reads the rendered `<hr>` rather than the source
+ * `---` — same reasoning as the overlay, and the same reason a `---` inside a fenced block
+ * does not start a new slide.
+ */
+export const exportSlidesToPdf = async ({ title = 'Untitled', onProgress } = {}) => {
+  const outputElement = document.querySelector('#output');
+  if (!outputElement) {
+    return { pages: 0 };
+  }
+
+  const groups = splitIntoSlides(outputElement);
+  if (!groups.length) {
+    return { pages: 0 };
+  }
+
+  const restoreDarkMermaid = getTheme() === 'dark';
+  let sandbox = null;
+
+  // Excluded for the same reason the page export excludes it — see exportPreviewToPdf().
+  const userCss = document.getElementById('markbeam-user-css');
+  const userCssWasEnabled = userCss ? !userCss.disabled : false;
+  if (userCss) {
+    userCss.disabled = true;
+  }
+
+  try {
+    await renderMermaidDiagrams('default');
+
+    const [html2canvasModule, jsPdfModule] = await Promise.all([
+      import('html2canvas-pro'),
+      import('jspdf')
+    ]);
+    const html2canvas = html2canvasModule.default;
+    const { jsPDF } = jsPdfModule;
+
+    const pxPerMm = SLIDE_WIDTH_PX / SLIDE_WIDTH_MM;
+    const slideHeightPx = Math.floor(SLIDE_HEIGHT_MM * pxPerMm);
+
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+
+    for (let index = 0; index < groups.length; index += 1) {
+      const created = createSlideSandbox(outputElement, groups[index], slideHeightPx);
+      sandbox = created.sandbox;
+
+      await rasteriseMermaidDiagrams(created.content);
+
+      const canvas = await html2canvas(sandbox, {
+        scale: RENDER_SCALE,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => decorateClone(clonedDoc)
+      });
+
+      /*
+       * Fitted by aspect ratio and centred rather than stretched to the page box: a slide
+       * holding two lines would otherwise be blown up to fill the page and look nothing like
+       * the deck on screen.
+       */
+      const scale = Math.min(SLIDE_WIDTH_MM / canvas.width, SLIDE_HEIGHT_MM / canvas.height);
+      const widthMm = canvas.width * scale;
+      const heightMm = canvas.height * scale;
+
+      if (index > 0) {
+        pdf.addPage();
+      }
+
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 0.95),
+        'JPEG',
+        MARGIN_MM + (SLIDE_WIDTH_MM - widthMm) / 2,
+        MARGIN_MM + (SLIDE_HEIGHT_MM - heightMm) / 2,
+        widthMm,
+        heightMm
+      );
+
+      sandbox.parentNode?.removeChild(sandbox);
+      sandbox = null;
+
+      if (typeof onProgress === 'function') {
+        onProgress(index + 1, groups.length);
+      }
+    }
+
+    pdf.save(filenameFromTitle(`${title} slides`));
+    return { pages: groups.length };
   } finally {
     if (userCss && userCssWasEnabled) {
       userCss.disabled = false;

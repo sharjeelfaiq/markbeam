@@ -594,5 +594,31 @@
     <dialog class="sheet" id="history" aria-label="Document history">
       <ul class="sheet__list" id="history-list" aria-label="Restore an earlier version"></ul>
     </dialog>
+
+    <!-- Presentation mode. A plain element rather than a <dialog>: it is opened by toggling
+         `hidden` from `src/ui/present.js`, and full screen is requested on this element, which
+         a modal dialog's top layer would fight over. Slides are built into #present-stage at
+         open and thrown away on close, so nothing stale is left behind the overlay. -->
+    <div class="present" id="present" role="dialog" aria-label="Presentation" hidden>
+      <div class="present__stage" id="present-stage"></div>
+      <div class="present__bar">
+        <button class="present__nav" id="present-prev" type="button" aria-label="Previous slide">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 3 5 8l5 5" />
+          </svg>
+        </button>
+        <span class="present__counter" id="present-counter"></span>
+        <button class="present__nav" id="present-next" type="button" aria-label="Next slide">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 3l5 5-5 5" />
+          </svg>
+        </button>
+        <button class="present__nav present__nav--close" id="present-close" type="button" aria-label="Leave presentation">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+    </div>
   </body>
 </html>

@@ -84,12 +84,15 @@ src/
   github.js          Contents API client — list, read, write, Gists. No DOM, no storage.
   gitlab.js          the same three calls against GitLab's Repository Files API
   remoteAuth.js      where the remote tokens live, and for how long — one slot per provider
+  autoSync.js        when a bound document may be resent, and what a conflict does
   editor/            Monaco setup + markbeam-dark/light themes
   markdown/          marked + DOMPurify + renderer overrides, math, emoji, highlight
+                     table.js — parse/edit/format a GFM table, no DOM and no editor
   mermaid/           lazy load, render, 150ms debounce, version guard, print copies
-  export/            pdf.js (banding), html.js, document.js (Word), download.js
+  export/            pdf.js (banding, and slides), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
-                     history, stamp, formatToolbar, outline, remote, gist, style
+                     history, stamp, formatToolbar, outline, remote, gist, style,
+                     present (the slide overlay)
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs
 ```
@@ -223,9 +226,23 @@ one — a token GitLab rejected says nothing about a GitHub one.
 Both clients are covered only by intercepted fixtures — neither has ever met the real API.
 That is T52, and it is a known gap rather than an oversight.
 
-Sync is deliberately **manual**: two palette commands, no background traffic. That is what
-makes the claim on `/about` — nothing leaves your browser unless you connect a repository —
-checkable by watching the network panel rather than merely asserted.
+Sync is **manual by default**, and automatic only when the user switches it on (T49). The
+claim on `/about` stays checkable in the network panel, which is the point, because the timer
+is bounded on three sides at once:
+
+- **Off unless enabled** — `loadAutoSync()` defaults to false, so a user who never touches it
+  sees exactly the T37 behaviour.
+- **Bound documents only** — a document is eligible only once a *manual* save has created a
+  binding for it. The timer may repeat a decision the user already made; it may not make one.
+  This is what stops files appearing in someone's repository that they never sent there.
+- **Changed, then idle** — not an interval. A blind timer resends unchanged documents and
+  makes the network panel unreadable, which would cost exactly the property being defended.
+
+**There is no merge, and there must not be one.** On a conflict the remote copy becomes a new
+document beside the local one — the same rule pulls already follow, because a remote fetch that
+silently overwrites local work is a data-loss path. `src/autoSync.js` holds the whole policy and
+imports nothing; `main.js` injects the clients, so these rules can be checked by reading one
+small file. A merge that is wrong once costs someone a document.
 
 Theme is stored twice: `saveThemePreference()` writes the namespaced preference *and* the
 bare `markbeam:theme` string the pre-paint boot script reads, since that script cannot parse
@@ -235,6 +252,20 @@ arriving from the original site. Keep both writes or dark mode flashes light on 
 The preference is tri-state (`light` / `dark` / `system`); `loadThemePreference()` migrates
 the booleans and bare strings earlier builds wrote — hence `toBoolean()`. Use it for any new
 persisted boolean.
+
+### Table editing
+
+`src/markdown/table.js` is pure — lines in, lines out, no DOM and no Monaco — so the awkward
+half, splitting and re-escaping cells, is tested directly instead of through the editor.
+`main.js` owns the other half: it maps the cursor to a row and a column so *add row* lands
+under the row you are on rather than always at the bottom, and applies the result through
+`editor.executeEdits` as a single range, because `setValue` drops the cursor and the undo
+stack with it.
+
+**A pipe splits a cell unless it is backslash-escaped, even inside backticks.** That reads
+like a bug and is not: GFM requires `\|` for a literal pipe including inside other inline
+spans, so `` `a|b` `` is two cells. Special-casing code spans here would disagree with the
+renderer sitting next to it, and the source would stop meaning what the preview shows.
 
 ### Mermaid rendering
 
@@ -303,6 +334,26 @@ laid-out box, clipping the right-hand side inside the svg's own viewport — mea
 throughout, so no CSS fixes it; setting explicit `width`/`height` attributes and stripping
 Mermaid's inline `max-width` were both tried and changed nothing. Handing the rasteriser a
 bitmap avoids its SVG path entirely.
+
+#### Slides are a second exporter in the same file
+
+`exportSlidesToPdf()` shares the preamble — user CSS off, Mermaid forced to `'default'`,
+`decorateClone`, `rasteriseMermaidDiagrams` — and **nothing else**. It has no page offsets and
+no banding: a slide *is* a page, so it gets one landscape A4 page, one `html2canvas` call and
+one sandbox each. Banding exists to amortise html2canvas's whole-document clone across several
+pages; a slide is one short element, so a per-slide call already costs what a band call costs.
+
+The sandbox is at least the slide box tall and taller when the content is, and the bitmap is
+then **fitted by aspect ratio and centred** rather than stretched. Both halves matter: cutting
+the overflow would lose the bottom of a slide, and stretching would blow a two-line slide up to
+fill the page.
+
+Splitting is `splitIntoSlides()` in `src/ui/present.js`, which reads the rendered `<hr>` and
+**never the source `---`**. In Markdown those three characters are also a setext heading
+underline and a front-matter fence, and inside a code block they are just characters — the
+renderer has already resolved which, so its output is the only split that agrees with the
+preview. `tests/present.test.mjs` puts a `---` inside a fenced block for exactly that reason:
+it is the check the obvious implementation fails.
 
 #### The preview stylesheet is re-parsed by the exporter
 

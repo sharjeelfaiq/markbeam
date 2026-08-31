@@ -1093,6 +1093,107 @@ kbd {
   }
 }
 
+/* ========================= presentation ========================= */
+
+/*
+ * The deck overlay (T51). Slides are clones of the preview's own nodes and carry `mb-md`, so
+ * everything inside one is styled by `preview.css` already — what is left here is the frame.
+ *
+ * `[hidden]` is spelled out on both the overlay and a slide because `display: flex` and
+ * `display: block` beat the attribute's default `display: none`. Without it the overlay stays
+ * on screen after Escape and every slide is visible at once, which is the whole feature
+ * failing in the least visible way.
+ */
+.present {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  flex-direction: column;
+  background: var(--preview-bg);
+}
+
+.present[hidden] {
+  display: none;
+}
+
+.present__stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+}
+
+/*
+ * A slide is sized like a page rather than stretched to the window: text set across 1600px of
+ * a wide monitor is unreadable from the back of a room, which is the only place this is ever
+ * looked at.
+ */
+.present__slide {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.present__slide[hidden] {
+  display: none;
+}
+
+.present__bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.present__counter {
+  min-width: 64px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.present__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.present__nav:hover {
+  background: var(--surface-hover);
+}
+
+.present__nav svg {
+  width: 15px;
+  height: 15px;
+}
+
+.present__nav--close {
+  margin-left: var(--sp-4);
+}
+
+@media (max-width: 640px) {
+  .present__stage {
+    padding: var(--sp-4);
+  }
+}
+
 /* ============================ print ============================ */
 
 /*
@@ -1111,6 +1212,8 @@ kbd {
   .format-toolbar,
   .pane-tabs,
   .toasts,
+  /* Printing while presenting should print the document, not the deck on screen. */
+  .present,
   dialog {
     display: none !important;
   }

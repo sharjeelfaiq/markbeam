@@ -37,7 +37,9 @@ const KEYS = {
   collapsedFolders: 'folders_collapsed',
   typography: 'typography',
   trash: 'trash',
-  customCss: 'custom_css'
+  customCss: 'custom_css',
+  autoSync: 'auto_sync',
+  remoteBindings: 'remote_bindings'
 };
 
 let read = (key) => {
@@ -396,6 +398,29 @@ export const historyDocIds = () => {
  * small array costs nothing, and it keeps the sweep in `src/trash.js` able to see the whole
  * budget at once.
  */
+/*
+ * Automatic sync (T49). Off unless asked for — the default is what keeps the promise on
+ * `/about` true for anyone who never touches it, so `toBoolean(..., false)` is load-bearing
+ * rather than stylistic.
+ */
+export const loadAutoSync = () => toBoolean(read(KEYS.autoSync), false);
+export const saveAutoSync = (value) => write(KEYS.autoSync, Boolean(value));
+
+/*
+ * Which document maps to which remote file, and the identifier the remote held when we last
+ * wrote it. That identifier is the whole conflict mechanism: if the remote no longer matches
+ * it, somebody else has written since, and we are not entitled to overwrite them.
+ *
+ * Keyed by document id, so deleting a document simply orphans its entry rather than
+ * corrupting anyone else's.
+ */
+export const loadRemoteBindings = () => {
+  const value = read(KEYS.remoteBindings);
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+};
+
+export const saveRemoteBindings = (map) => write(KEYS.remoteBindings, map || {});
+
 export const loadCustomCss = () => {
   const value = read(KEYS.customCss);
   return typeof value === 'string' ? value : '';
