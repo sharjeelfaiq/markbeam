@@ -215,6 +215,11 @@ Green after — Monaco loads from the CDN, `mermaid svg=1, katex=1, data image=1
 CSS applies (`rgb(200, 0, 100)`), PDF export 1 page, slide export 2 slides, a share link
 restores its document, **zero violations**, console clear of CSP complaints. Full suite 39/39.
 
+**Verified by hand, 2026-09-01:** exercised on production in a real browser with DevTools open
+— mermaid, maths, custom preview CSS and PDF export — with **no CSP violation messages**. That
+check matters more than it looks: a CSP failure does not throw, the feature simply does nothing,
+so a passing suite and a broken feature look identical from here.
+
 ### Verify vs reference — T59
 
 *On the reference* — https://markdownlivepreview.com serves no `Content-Security-Policy` header
@@ -391,6 +396,10 @@ refusals are never a lock-out.
 Green after, including `prompt() called 1 time(s)`, `dismissals: 1` with a timestamp, silence
 inside the backoff window, silence with `installedAt` set, and `0px` horizontal overflow at
 375px with the banner up.
+
+**Verified by hand, 2026-09-01:** the install flow was run in a real browser, which is the only
+place it can be — headless Chrome can raise `beforeinstallprompt` but never completes an
+install, so the suite proves the policy and a person proves the outcome.
 
 ### Verify vs reference — T60
 
@@ -615,6 +624,10 @@ down with it.
 arrows move both ways, Escape closes, and the export produces `3 page(s) for 3 slides` — counted
 by instrumenting `toDataURL`, so it counts bitmaps actually drawn rather than pages jsPDF claims.
 Zero console errors in both passes.
+
+**Verified by hand, 2026-09-01:** the deck and its exported PDF were opened and looked at. The
+suite counts slides and canvases; it cannot see that a slide is centred rather than stretched,
+or light rather than dark, which is why this one wanted eyes.
 
 ### Verify vs reference — T49, T50, T51
 
