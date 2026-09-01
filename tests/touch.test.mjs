@@ -127,6 +127,54 @@ export const suite = {
         detail: `activeElement=${afterTap.what}`
       });
 
+      /*
+       * ---- the sequence that was actually reported (T68) ----
+       *
+       * T64 removed the focus granted at boot. This is the focus left behind after somebody
+       * has typed: Android's back button dismisses the keyboard **without blurring anything**,
+       * so the field stays focused and every later touch — including a drag meant to scroll —
+       * is a fresh gesture on a focused text field, which the browser answers with the
+       * keyboard. Dismissing it again changes nothing, because dismissal was never the state
+       * that mattered.
+       *
+       * The tap below is asserted before the drag on purpose: if focusing were broken, the
+       * drag check would pass for entirely the wrong reason.
+       */
+      await page.touchscreen.tap(box.x, box.y);
+      await sleep(600);
+      const beforeScroll = await focused(page);
+
+      checks.push({
+        name: 'tapping first focuses the editor, as it should',
+        pass: beforeScroll.inputarea === true,
+        detail: `activeElement=${beforeScroll.what}`
+      });
+
+      await page.touchscreen.touchStart(box.x, box.y + 150);
+      for (let step = 1; step <= 8; step += 1) {
+        await page.touchscreen.touchMove(box.x, box.y + 150 - step * 30);
+        await sleep(25);
+      }
+      await page.touchscreen.touchEnd();
+      await sleep(700);
+
+      const afterScrollWhileFocused = await focused(page);
+      checks.push({
+        name: 'and dragging afterwards lets the focus go, so the keyboard stays shut',
+        pass: afterScrollWhileFocused.inputarea === false,
+        detail: `activeElement=${afterScrollWhileFocused.what}`
+      });
+
+      await page.touchscreen.tap(box.x, box.y);
+      await sleep(600);
+      const backAgain = await focused(page);
+      checks.push({
+        name: 'and tapping again brings it back, so the editor is still typable',
+        // Without this, "fixed" and "focus removed for good" look identical from here.
+        pass: backAgain.inputarea === true,
+        detail: `activeElement=${backAgain.what}`
+      });
+
       checks.push({ name: 'no console errors on a phone', pass: errors.length === 0, detail: errors[0] });
     } finally {
       await phone.close().catch(() => {});

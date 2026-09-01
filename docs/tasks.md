@@ -78,6 +78,63 @@ free and the entry should be revisited.
 
 ## Completed
 
+### [x] T68 · Dismissing the keyboard left the editor focused, so the next scroll re-opened it — 2026-09-01
+
+**Root cause:** **Android's back button dismisses the keyboard without blurring anything.** After
+one tap, Monaco's hidden `textarea.inputarea` kept focus for the rest of the session, so every
+later touch — including a drag meant to scroll — was a fresh gesture on a focused text field, and
+the browser answered it with the keyboard. Dismissing it again changed nothing, because dismissal
+was never the state that mattered.
+
+**Two different focus sources, fixed separately, and the second only existed because the first was
+gone.** T64 removed the focus granted at *boot*; this is the one left behind by *use*. The report
+that found it was precise about the difference — a fresh load scrolled silently, and only the
+sequence *tap → back → scroll* brought the keyboard back — which is what made a second cause
+visible at all rather than looking like a failed fix.
+
+**The guard** lives in `src/editor/index.js` beside the existing mobile decision, and runs only
+under `(pointer: coarse)`. A `touchmove` past 10px means the gesture is a scroll, so if the
+inputarea holds focus it is blurred. A tap never travels that far, falls through to Monaco, and
+still focuses. Listeners are `passive: true`: this must never be able to hold up a scroll.
+
+**Not `visualViewport`, deliberately.** Its resize event does fire when the IME hides — but
+equally when the URL bar collapses, on rotation and on zoom. Keying on it would blur people
+mid-sentence for reasons unrelated to the keyboard. The drag is unambiguous; the viewport is not.
+
+**The trade, stated rather than buried:** scrolling away from what you were typing costs one tap
+to resume. That is what native editors do, and it beats a keyboard that cannot be dismissed.
+
+**Measured:** red first on exactly one check — `and dragging afterwards lets the focus go —
+activeElement=inputarea`, the reported sequence reproduced under emulation. Green after, with
+`tapping first focuses the editor` above it and `tapping again brings it back` below it, so the
+fix cannot pass by simply never focusing. Nine checks in `touch`, plus the desktop control.
+
+**What the suite cannot settle:** a headless browser has no on-screen keyboard, so focus is the
+proxy — it is what summons one. The device check below is the real gate, and T64's commit having
+predicted "a second cause on real hardware would need its own task" is exactly how this one was
+found.
+
+### Verify vs reference — T68
+
+*On the reference* — https://markdownlivepreview.com uses a plain `<textarea>`. A phone focuses it
+only on a tap and browsers do not re-raise the keyboard for a scroll on an unfocused field, so it
+never had this to fix.
+
+*On ours* — **needs a real phone; emulated touch is not a touchscreen:**
+
+1. open the site and scroll without touching the editor first — no keyboard *(this is T64, and it
+   already worked)*;
+2. tap the source pane — the keyboard opens;
+3. **dismiss it with the back button**, then drag to scroll — it must stay shut. Before this
+   change it reappeared every single time, no matter how often it was dismissed;
+4. tap again — it opens, because the editor is still meant to be typable.
+
+On a desktop nothing changes; the guard binds touch events only:
+
+```js
+document.activeElement.classList.contains('inputarea')   // true after opening a document
+```
+
 ### [x] T66 · The toolbar exported one format out of six — 2026-09-01
 
 **Root cause:** the toolbar had a PDF button. HTML, clipboard HTML, Word, Markdown and the slide
