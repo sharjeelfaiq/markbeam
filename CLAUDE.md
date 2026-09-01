@@ -234,8 +234,16 @@ one — a token GitLab rejected says nothing about a GitHub one.
 - **A 401 disconnects.** A token the service has rejected is worthless and must not sit
   there looking like a working connection.
 
-Both clients are covered only by intercepted fixtures — neither has ever met the real API.
-That is T52, and it is a known gap rather than an oversight.
+Both clients are covered by intercepted fixtures, which agree with whatever the client sends —
+so `tests/live/github.mjs` exists to settle the parts only GitHub can: that `writeFile()` must
+omit `sha` when creating and send it when replacing, and that a refused token comes back as a
+401 whose message names no credential.
+
+**It is not part of `npm test` and CI never runs it.** It needs a credential and writes to a
+real repository; a suite that no-ops when an environment variable is missing would report
+success for a run that never happened. Run it by hand with `MARKBEAM_GH_TOKEN` and
+`MARKBEAM_GH_REPO` set — README says how. GitLab has no equivalent yet and remains
+fixture-only.
 
 Sync is **manual by default**, and automatic only when the user switches it on (T49). The
 claim on `/about` stays checkable in the network panel, which is the point, because the timer

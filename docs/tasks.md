@@ -36,17 +36,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P3 — Housekeeping
 
-### [ ] T52 · GitHub sync has never met the real API
-
-**Why:** carried forward from T37, which shipped with this stated rather than glossed. Every
-check in `tests/github.test.mjs` is served from a fixture, so the request *shape* is unproven:
-in particular the `sha` lookup in `writeFile()` that turns a create into an update, and the 401
-path. Fixtures agree with whatever the client sends, which is the whole limitation.
-
-**Done when:** one pass against a scratch repository with a fine-grained Contents-only token
-confirms create, update, list, open and the rejected-token path, and the result is recorded here
-— including anything the fixtures had wrong.
-
 ### [ ] T53 · Two export paths no suite can reach
 
 **Why:** `.doc` is only really validated by Word, and *Copy rendered HTML* by an actual email
@@ -112,6 +101,74 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T52 · GitHub sync had never met the real API — 2026-09-01
+
+**Why:** carried forward from T37, which shipped saying this rather than glossing it. Every
+check in `tests/github.test.mjs` is served from an intercepted fixture, and a fixture agrees
+with whatever the client sends — so the request *shape* was unproven.
+
+**The result, which is an anticlimax worth recording: the fixtures were right.** Nothing in
+`src/github.js` had to change. Both claims only GitHub could settle now hold against the real
+API:
+
+- `writeFile()` sends **no** `sha` when creating — `PUT accepted without a sha`.
+- It sends the `sha` it looked up first when replacing — `PUT accepted with the looked-up sha`,
+  and the sha moved `3dd606b7 -> 06eafa74`. Without that lookup GitHub answers 422, so this is
+  the branch a fixture could never vouch for.
+
+**One correction to this task's own framing.** It listed the 401 path as needing a scratch
+repository and a token. It did not: running the harness with a deliberately invalid token
+exercises the live 401 with no credential at all, and that is how it was first proven — the
+same run that demonstrated the harness reports failures rather than passing vacuously
+(6/10 failing, three passing).
+
+**Why the harness is a script and not a suite.** `tests/live/github.mjs` is deliberately outside
+`npm test`: it needs a credential and it writes to a real repository. A suite that quietly
+no-ops when an environment variable is missing would report success for a run that never
+happened — the vacuous green this repo keeps catching. Running it is a decision someone makes,
+and CI, which has no token, never makes it. Credentials come from `.env` (gitignored, with a
+committed `.env.example`) or real environment variables, which win over the file so a stale
+`.env` cannot override a one-off run. The script never interpolates the token and scans its own
+log for it before exiting.
+
+**Measured:** `PASS github live — 10/10` against `sharjeelfaiq/markbeam-scratch`: create,
+read-back (44 chars), update, sha moved, `id === sha` (the field auto-sync compares), list found
+it among 2 markdown files, a rejected token refused with 401 on read, list and write, the
+message naming no credential, the created file deleted again (HTTP 200), and nothing in the
+output containing the token. Build clean and the full suite 39/39 either side — the harness sits
+outside `npm test` and perturbs nothing.
+
+**Still open:** GitLab remains fixture-only. `src/gitlab.js` splits create and update across
+`PUT` and `POST` and answers a POST onto an existing file with **400**, which is exactly the
+kind of shape a fixture cannot vouch for — the same gap this task closed for GitHub, from the
+other side.
+
+### Verify vs reference — T52
+
+*On the reference* — https://markdownlivepreview.com has no sync of any kind, so there is no
+client to prove and nothing to compare. This is a check on our own claim, not a feature
+difference.
+
+*On ours* — no user-visible change; the client was already correct. What changed is that it is
+now proven, and re-provable in about ten seconds:
+
+```
+cp .env.example .env          # fine-grained token, Contents read+write, one scratch repo
+node tests/live/github.mjs    # expect: PASS github live — 10/10
+```
+
+Two things worth doing without any credential, because they cost nothing and prove the harness
+is honest:
+
+```
+node tests/live/github.mjs                                   # exit 2, "This is not a pass."
+MARKBEAM_GH_TOKEN=invalid MARKBEAM_GH_REPO=octocat/Hello-World node tests/live/github.mjs
+# 6/10 fail with a real 401 from api.github.com; the rejected-token checks pass
+```
+
+Revoke the token afterwards. The run takes seconds and the credential has no reason to outlive
+it.
 
 ### [x] T59 · No Content-Security-Policy — 2026-09-01
 

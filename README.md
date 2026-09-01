@@ -85,6 +85,26 @@ those two.
 
 Override `CHROME_PATH` or `MARKBEAM_URL` if your setup differs. There is no linter.
 
+### The live GitHub check
+
+`tests/live/github.mjs` runs the sync client against the **real** API, because every check in
+`tests/github.test.mjs` is served from a fixture and a fixture agrees with whatever the client
+sends. It is not part of `npm test`: it needs a credential and it writes to a real repository,
+and a suite that quietly no-ops without one would report success for a run that never happened.
+
+```
+cp .env.example .env     # then put a real token in it — .env is gitignored
+node tests/live/github.mjs
+```
+
+`MARKBEAM_GH_TOKEN` and `MARKBEAM_GH_REPO` can equally be real environment variables, which
+win over `.env` so a stale file cannot silently override a one-off run. The token wants
+**Contents: read and write on a single scratch repository** and nothing else.
+
+It creates a file, updates it, lists it, reads it back, checks a rejected token is refused with
+a 401 whose message names no credential, then deletes what it made. The output carries statuses
+and shas, never the token.
+
 ## Architecture
 
 A single page, no framework. `src/main.js` is wiring only: it holds the small amount of
