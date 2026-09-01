@@ -16,6 +16,10 @@ local storage and stays there unless you connect a GitHub or GitLab repository y
   half-typed diagram does not flash errors at you
 - **Local images** — paste or drop PNG, JPEG and WebP files; they are resized and embedded
   in the Markdown without being uploaded
+- **Edit a file on disk** — open a `.md` from a folder and save back to *that file*, rather than
+  copying in and copying out. Chromium only; other browsers keep today's drop-and-download path
+  and are offered nothing that cannot work. A file changed underneath you is never overwritten —
+  both versions are kept, the same rule repository sync follows
 - **PDF export** — page breaks fall between blocks, so a heading or a table row is never
   sliced in half
 - **Table editing** — add and remove rows and columns and change a column's alignment from
@@ -150,6 +154,8 @@ src/
   history.js         autosave snapshots; trash.js  deleted documents, seven days
   share.js           document <-> URL fragment codec
   openFile.js        reading and validating a dropped or picked file
+  fileSystem.js      opening and writing a real file on disk; the no-merge rule
+  fileHandles.js     where a file handle lives — the app's only IndexedDB
   images.js          paste/drop decode, resize to WebP, embed
   documentLimits.js  the 1 MiB ceiling images are measured against
   customCss.js       user stylesheet, parsed and scoped to the preview

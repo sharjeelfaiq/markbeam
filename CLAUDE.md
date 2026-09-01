@@ -92,6 +92,8 @@ src/
   history.js         autosave snapshots: cadence, thinning, byte budget
   share.js           document <-> URL fragment codec
   openFile.js        reading and validating a dropped or picked file
+  fileSystem.js      open/write a real file on disk — no DOM, no storage, no merge
+  fileHandles.js     handles in IndexedDB, the only use of it in the app
   images.js          paste/drop decode, resize to WebP, base64 embed
   documentLimits.js  the 1 MiB per-document ceiling images are measured against
   trash.js           deleted documents and their history, kept for seven days
@@ -309,6 +311,47 @@ stack with it.
 like a bug and is not: GFM requires `\|` for a literal pipe including inside other inline
 spans, so `` `a|b` `` is two cells. Special-casing code spans here would disagree with the
 renderer sitting next to it, and the source would stop meaning what the preview shows.
+
+### Files on disk — the only IndexedDB in the app
+
+`src/fileSystem.js` is the policy and imports nothing; `src/fileHandles.js` is the store;
+`main.js` connects them — the same split as `autoSync.js` and `install.js`, so "when may this
+overwrite somebody's file?" is answerable from one short file.
+
+**`src/fileHandles.js` is the one place that uses IndexedDB, and it has to.** Everything else
+persists through `storage.js`, which writes JSON `{ v: value }` envelopes into `localStorage`. A
+`FileSystemFileHandle` is structured-cloneable but **not JSON-serialisable** — `JSON.stringify`
+turns it into `{}` and the file is gone — so IndexedDB is the only store that can hold one.
+Reaching for it anywhere else is reaching past a simpler thing that already works.
+
+Three things there are load-bearing:
+
+- **A module-scope `Map` is the source of truth for the tab; IndexedDB is best-effort
+  durability.** Persistence genuinely fails in the ordinary course of events — a private window
+  refuses to open a database, and any handle that is not structured-cloneable throws
+  `DataCloneError` on `put`. Neither is a reason a user cannot save the file they just opened,
+  so the write is wrapped and downgraded to a warning.
+- **The stamp must be re-read after our own write.** A successful write moves the file's
+  `lastModified`. An app that keeps comparing against the timestamp it saw at open reads *its
+  own* save as somebody else's edit and refuses every save after the first — a feature that
+  works exactly once. `tests/filesystem.test.mjs` saves twice for that reason alone.
+- **`hasMoved()` answers *yes* when the stamp is missing.** Not knowing when a file was last
+  read is not a licence to overwrite it; the safe direction is the one that keeps both copies.
+
+**There is no merge, and there must not be one** — the same rule as `autoSync.js`, reached from
+the other side. If the file changed on disk, the disk version becomes a new document beside the
+open one via `addDocumentSilently()`, which exists precisely so a conflict copy does not steal
+the editor from the local edit.
+
+`Ctrl+S` stays the PDF; saving to disk is `Ctrl+Shift+S`. Monaco was **measured** not to claim
+that chord, so unlike `Ctrl+K` and `Ctrl+Shift+F` it needs no matching `editor.addCommand` — and
+`tests/filesystem.test.mjs` presses it with focus inside the editor, which is the only state
+where that would show up.
+
+Chromium only. `isSupported()` gates the *commands*, not merely the calls, so Safari and Firefox
+are offered nothing rather than an offer that fails; the drop-and-download path is what they
+keep. Whether a handle survives a reload cannot be tested — a real handle needs a real picker —
+so that one is verified by hand.
 
 ### The install offer
 

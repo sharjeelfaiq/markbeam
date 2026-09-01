@@ -57,6 +57,8 @@ import {
   saveInstallState,
   loadRemoteBindings,
   saveRemoteBindings,
+  loadFileBindings,
+  saveFileBindings,
   loadCustomCss,
   saveCustomCss,
   loadScrollSync,
@@ -117,6 +119,15 @@ import {
 import { initFormatToolbar } from './ui/formatToolbar.js';
 import { formatStamp } from './ui/stamp.js';
 import { readMarkdownFile, titleFromFilename } from './openFile.js';
+import {
+  isSupported as supportsFileSystem,
+  pickFile,
+  readHandle,
+  hasMoved,
+  hasPermission,
+  writeHandle
+} from './fileSystem.js';
+import { handleFor, restoreHandle, rememberHandle, forgetHandle } from './fileHandles.js';
 import { documentBytes, MAX_DOCUMENT_BYTES } from './documentLimits.js';
 import { classifyImageFile, optimizeImage } from './images.js';
 import {
@@ -627,6 +638,10 @@ const init = () => {
 
     deleteDoc(activeDocId);
     forgetHistory(activeDocId);
+    // The file itself is not ours to touch — only our handle on it, which would otherwise
+    // outlive the document and sit in IndexedDB pointing at somebody's disk forever.
+    setFileBinding(removedId, null);
+    forgetHandle(removedId);
     documents = documents.filter((doc) => doc.id !== activeDocId);
     persistDocuments();
 
@@ -1238,6 +1253,127 @@ const init = () => {
    * that was already made. That is what keeps "nothing is sent unless you ask" true in spirit
    * once the wording admits the timer.
    */
+  /*
+   * Files on disk (T70).
+   *
+   * The handle lives in `src/fileHandles.js` because it cannot be JSON; what is kept here is
+   * the JSON-safe half — the name to show and the `lastModified` the divergence check compares
+   * against. `src/fileSystem.js` owns the rule itself and imports nothing, so "when may this
+   * overwrite somebody's file?" stays answerable from one short file.
+   */
+  const fileBindings = loadFileBindings();
+
+  let fileBindingFor = (docId) => (docId ? fileBindings[docId] || null : null);
+
+  let setFileBinding = (docId, binding) => {
+    if (!docId) {
+      return;
+    }
+    if (binding) {
+      fileBindings[docId] = binding;
+    } else {
+      delete fileBindings[docId];
+    }
+    saveFileBindings(fileBindings);
+  };
+
+  let openFileFromDisk = async () => {
+    let handle;
+    try {
+      handle = await pickFile();
+    } catch (error) {
+      toastError('Could not open that file');
+      return;
+    }
+
+    // Cancelling the picker is an answer, not a failure.
+    if (!handle) {
+      return;
+    }
+
+    const { file, stamp } = await readHandle(handle);
+
+    // The same rules the drop path uses — size, type, and a NUL check for binary decoded as
+    // UTF-8. A second set of rules here would drift from the first.
+    const result = await readMarkdownFile(file);
+    if (!result.ok) {
+      toastError(result.reason);
+      return;
+    }
+
+    const id = createDocument({ silent: true });
+    setValue(result.text);
+    setDocTitle(result.title);
+    setFileBinding(id, { name: handle.name || file.name, stamp });
+    await rememberHandle(id, handle);
+    toast(`Opened ${handle.name || file.name}`);
+  };
+
+  let saveFileToDisk = async () => {
+    const docId = activeDocId;
+    const binding = fileBindingFor(docId);
+
+    /*
+     * After a reload the session Map is empty but the handle may still be in IndexedDB. Pulling
+     * it back here is what makes reopening cost **one permission prompt rather than a second
+     * trip through the file picker** — the browser drops the permission across a reload, not
+     * the handle. The read is a fast IndexedDB get so the click's transient activation, which
+     * `hasPermission({ request: true })` needs a moment later, is still live.
+     */
+    const handle = handleFor(docId) || (binding ? await restoreHandle(docId) : null);
+
+    if (!handle) {
+      toastError(
+        binding
+          ? `Open “${binding.name}” from disk again — this browser did not keep the file`
+          : 'This document did not come from a file on disk'
+      );
+      return;
+    }
+
+    // Straight off the click: requesting permission needs the user gesture, and an awaited
+    // detour before this point spends it.
+    if (!(await hasPermission(handle, { request: true }))) {
+      toastError('Markbeam was not allowed to write that file');
+      return;
+    }
+
+    let file;
+    try {
+      ({ file } = await readHandle(handle));
+    } catch (error) {
+      toastError('Could not read that file — it may have been moved or deleted');
+      return;
+    }
+
+    /*
+     * Somebody else wrote since we last read it. Never overwrite and never merge: keep both and
+     * let the user choose, which is the rule `src/autoSync.js` already follows for a repository.
+     */
+    if (hasMoved(file, binding?.stamp)) {
+      const theirs = await readMarkdownFile(file);
+      if (theirs.ok) {
+        // Silently, so the editor keeps the local edit — the same reason the remote conflict
+        // path uses this helper rather than `createDocument()`.
+        addDocumentSilently(`${theirs.title} (on disk)`, theirs.text);
+        toastError(
+          `“${handle.name}” changed on disk — kept both, the file's version is a separate document`
+        );
+        return;
+      }
+      toastError(`“${handle.name}” changed on disk and could not be read — nothing was written`);
+      return;
+    }
+
+    try {
+      const stamp = await writeHandle(handle, editor.getValue());
+      setFileBinding(docId, { name: handle.name, stamp });
+      toast(`Saved ${handle.name}`);
+    } catch (error) {
+      toastError(`Could not write “${handle.name}”`);
+    }
+  };
+
   let bindingFor = (docId) => (docId ? remoteBindings[docId] || null : null);
 
   let setBindingFor = (docId, binding) => {
@@ -1945,6 +2081,17 @@ const init = () => {
     { title: 'Insert table', run: formatting.table },
     { title: 'Insert local image…', run: openImagePicker },
     { title: 'Open a Markdown file…', run: openFilePicker },
+    /*
+     * Spread, not conditional inside the array, so a browser without the API is offered
+     * nothing at all rather than a command that fails when pressed. Safari and Firefox have no
+     * `showOpenFilePicker`; the drop-and-download path above is what they keep.
+     */
+    ...(supportsFileSystem()
+      ? [
+          { title: 'Open a file from disk…', run: openFileFromDisk },
+          { title: 'Save to file', keys: 'mod+shift+s', run: saveFileToDisk }
+        ]
+      : []),
     {
       title: 'Find in document',
       // A hint, never a binding — see runEditorAction above.

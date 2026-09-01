@@ -30,30 +30,6 @@ defect already known.
 *Five things no browser Markdown editor does well. Each is shippable alone, needs no server, and
 weakens no claim on `/about`.*
 
-### [ ] T70 · Edit a real file on disk, not a copy of it
-
-**Why:** every browser competitor traps your text in its own storage — StackEdit, Dillinger and
-markdownlivepreview all make you copy in and copy out. The File System Access API lets Markbeam
-open a `.md` from a folder, edit it, and save back to **that file**. It is the strongest
-expression of the promise the app already makes: nothing uploaded, and now nothing trapped
-either.
-
-**Traps, all of them design problems rather than API ones:**
-
-- **Chromium only.** Safari and Firefox have no `showOpenFilePicker`, so the existing
-  drop-and-download path stays as the fallback and the UI must not imply otherwise.
-- **The handle does not survive a reload by itself.** It can be kept in IndexedDB, but the
-  *permission* must be re-requested with a user gesture, so "reopen last file" is a prompt, not
-  magic. Designing that prompt is the actual work.
-- **`src/storage.js` owns persistence.** A file-backed document is a second source of truth
-  beside `markbeam:doc:<id>`, and the two must not silently diverge — decide up front whether
-  the file wins, the browser copy wins, or the app refuses and asks.
-
-**Done when:** a `.md` can be opened from disk, edited, saved back with `Ctrl+S`-adjacent
-ergonomics without clobbering the PDF shortcut, reopened after a reload behind one permission
-prompt, and a suite covers the save path with the picker stubbed. Browsers without the API must
-behave exactly as they do today.
-
 ### [ ] T71 · Paste HTML and get Markdown
 
 **Why:** copying a table out of a webpage, a Google Doc or Confluence and pasting it into a
@@ -478,6 +454,89 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T70 · Edit a real file on disk, not a copy of it — 2026-09-01
+
+**Why:** every browser competitor traps your text in its own storage — StackEdit, Dillinger and
+markdownlivepreview all make you copy in and copy out. The File System Access API lets Markbeam
+open a `.md` from a folder, edit it, and save back to **that file**: the strongest form of the
+promise the app already makes, since nothing is uploaded and now nothing is trapped either.
+
+**The answer to the task's third trap — which of the two sources of truth wins — is neither.**
+The app refuses and asks. `src/autoSync.js` already declines to merge a repository conflict
+because a write that silently replaces work is a data-loss path, and a file changed underneath
+you is that same situation arriving through a different door. So the disk version becomes a new
+document beside the open one and the user chooses. There is no merge and there must not be one.
+
+**Three things measured rather than assumed, each of which would have shipped a plausible bug:**
+
+1. **The stamp has to be re-read after our own write.** A successful write moves the file's
+   `lastModified`. Comparing against the timestamp seen at open makes the app read *its own*
+   save as somebody else's edit and refuse every save after the first — a feature that works
+   exactly once, and one that a single-save test would call green. `tests/filesystem.test.mjs`
+   saves twice for that reason alone.
+2. **Monaco does not claim `Ctrl+Shift+S`.** `Ctrl+K` and `Ctrl+Shift+F` both need registering
+   twice — once in the palette and once as an `editor.addCommand` — because Monaco stops
+   propagation on keys it binds. This chord needed no such thing, but that is a measurement:
+   the suite presses it with focus *inside the editor*, which is the only state where the bug
+   would appear. `Ctrl+S` stays the PDF.
+3. **`addDocumentSilently()` already existed for exactly this.** Its own comment says it is for
+   a conflict copy, "the whole point there is that the local edit keeps the editor". The first
+   implementation re-opened the document by hand; the existing helper was right and that went.
+
+**This is the only IndexedDB in the app, and only because it must be.** Everything else persists
+through `storage.js` as JSON `{ v: value }` envelopes in `localStorage`, and a
+`FileSystemFileHandle` is structured-cloneable but **not JSON-serialisable** — `JSON.stringify`
+turns it into `{}` and the file is gone. So `src/fileHandles.js` keeps handles in IndexedDB and
+the JSON-safe half — a name to show, a stamp to compare — stays in `storage.js` beside the remote
+bindings it is modelled on.
+
+**Persistence is best-effort, and that fell out of writing the test rather than being designed
+in.** A stubbed handle carries methods, so it is not structured-cloneable and IndexedDB rejects
+it with `DataCloneError`. A private window refuses to open the database at all, identically. So
+a module-scope `Map` is the source of truth for the tab and IndexedDB is durability for the next
+visit — nobody should be unable to save the file they just opened because next week's
+convenience could not be arranged.
+
+**A GitLab suite failed, and the filesystem feature caused it.** `tests/gitlab.test.mjs` selected
+its command with the bare substring `'Save to'`, unique until *Save to file* was added earlier in
+the palette; `find()` then returned the wrong command and the suite reported `no write seen` — a
+GitLab failure with a filesystem cause. `tests/github.test.mjs` already named its command in
+full, so gitlab was the lone outlier. Fixed there, with a note that a substring unique today is
+not a selector but a bet on nothing else ever being named similarly.
+
+**Red first:** five checks failed against unimplemented code — `no "Open a file from disk"
+command`, `title null`, `no "Save to file" command`, `0 write(s) after two saves`, and
+`1 -> 1 documents`. All green after. Three further checks passed in both runs and are marked as
+guards rather than evidence, since "must not happen" is vacuously true before the thing that
+could do it exists.
+
+**Not covered by any suite, and it cannot be:** whether a handle actually survives a reload. A
+real `FileSystemFileHandle` needs a real picker and a real gesture, so that one is verified by
+hand — see below.
+
+### Verify vs reference — T70
+
+*On the reference* — https://markdownlivepreview.com cannot open a file at all: you paste in and
+copy out, which is the entire reason this task exists. Neither can StackEdit or Dillinger write
+back to a file you already have. There is nothing to compare against, only an absence.
+
+*On ours* — http://localhost:5173 in Chrome or Edge:
+
+1. `Ctrl+K` → *Open a file from disk…*, pick any `.md`. It opens, and the document takes the
+   file's name without its extension.
+2. Edit it. `Ctrl+Shift+S`, or *Save to file*. Open the file in another editor: the change is
+   there. **`Ctrl+S` still exports a PDF** — that is the one a careless version steals.
+3. Save a second time. It must still work; if the timestamp bookkeeping were wrong it would
+   refuse from here on.
+4. **Reload the page, then save again.** Expect exactly one permission prompt — the browser drops
+   the permission across a reload but keeps the handle — and no second trip through the picker.
+5. **The conflict.** With the file open here, edit and save it in another editor. Now save from
+   Markbeam. It must refuse, keep your text in the editor, say the file changed, and leave a new
+   document named `<name> (on disk)` holding their version. Check the file on disk still has
+   their text — nothing of theirs may be lost.
+6. **Firefox or Safari:** `Ctrl+K` offers neither *Open a file from disk…* nor *Save to file*, and
+   dropping a `.md` onto the window still opens it exactly as before.
 
 ### [x] T96 · The product moved again and the words describing it did not — 2026-09-01
 

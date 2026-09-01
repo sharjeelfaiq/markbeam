@@ -40,6 +40,7 @@ const KEYS = {
   customCss: 'custom_css',
   autoSync: 'auto_sync',
   remoteBindings: 'remote_bindings',
+  fileBindings: 'file_bindings',
   install: 'install'
 };
 
@@ -421,6 +422,24 @@ export const loadRemoteBindings = () => {
 };
 
 export const saveRemoteBindings = (map) => write(KEYS.remoteBindings, map || {});
+
+/*
+ * Which document came from which file on disk (T70), and the `lastModified` that file carried
+ * when we last read or wrote it. That stamp is the whole conflict mechanism, exactly as the
+ * remote identifier above is: if the file no longer matches it, somebody has written since and
+ * we are not entitled to overwrite them.
+ *
+ * **The handle itself is not here and cannot be** — it is structured-cloneable but not
+ * JSON-serialisable, so it lives in IndexedDB via `src/fileHandles.js`. What is stored here is
+ * the JSON-safe half: a name to show, and a stamp to compare. Keyed by document id, so deleting
+ * a document orphans its entry rather than corrupting anyone else's.
+ */
+export const loadFileBindings = () => {
+  const value = read(KEYS.fileBindings);
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+};
+
+export const saveFileBindings = (map) => write(KEYS.fileBindings, map || {});
 
 /*
  * How the install offer has gone (T60): visits, refusals, when the last one was, and whether

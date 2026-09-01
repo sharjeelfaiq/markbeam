@@ -109,6 +109,10 @@ it rewrites what you typed.
   embedded in the Markdown, never uploaded. Documents are capped at 1 MiB so one
   screenshot cannot evict your saved versions
 - **Open a file** — drop a \`.md\` file anywhere on the window, or pick one from the palette
+- **Edit a file on disk** — in Chrome and Edge, *Open a file from disk…* opens a \`.md\` and
+  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> saves back to **that file**, so your text is
+  never trapped in this app. If the file changed underneath you it is never overwritten: both
+  versions are kept and you choose. Other browsers keep the drop-and-download route above
 
 ## Getting it out again
 

@@ -94,6 +94,12 @@ const boot = async (page) => {
   await ready(page);
 };
 
+/*
+ * Name the command in full. This took the bare needle `'Save to'` until T70 added *Save to
+ * file*, at which point the palette's `find()` returned that instead and this suite failed with
+ * "no write seen" — a GitLab failure caused by a filesystem feature. A substring that is unique
+ * today is not a selector; it is a bet on nothing else ever being named similarly.
+ */
 const runCommand = async (page, needle) => {
   await page.keyboard.down('Control');
   await page.keyboard.press('KeyK');
@@ -160,7 +166,7 @@ export const suite = {
       await page.reload({ waitUntil: 'networkidle2' });
       await boot(page);
 
-      await runCommand(page, 'Save to');
+      await runCommand(page, 'Save to a repository');
       const hasProvider = await page.evaluate(() => {
         const select = document.querySelector('#remote-provider');
         if (!select) return null;
@@ -242,7 +248,7 @@ export const suite = {
       await page.reload({ waitUntil: 'networkidle2' });
       await boot(page);
 
-      await runCommand(page, 'Save to');
+      await runCommand(page, 'Save to a repository');
       const switched = await connectAs(page, 'gitlab', GL_TOKEN, 'octocat/handbook');
       await sleep(1200);
 
