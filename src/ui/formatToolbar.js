@@ -1,3 +1,5 @@
+import { positionBelow } from './position.js';
+
 /*
  * Accessible editor formatting toolbar.
  *
@@ -65,20 +67,6 @@ export const initFormatToolbar = ({ editor, formatting, onInsertImage }) => {
     const control = controls[rovingIndex];
     control.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (focus) control.focus();
-  };
-
-  const positionBelow = (floating, target, gap) => {
-    const targetRect = target.getBoundingClientRect();
-    const floatingRect = floating.getBoundingClientRect();
-    const viewportGap = 8;
-    let left = targetRect.left + targetRect.width / 2 - floatingRect.width / 2;
-    left = Math.max(viewportGap, Math.min(left, window.innerWidth - floatingRect.width - viewportGap));
-    let top = targetRect.bottom + gap;
-    if (top + floatingRect.height > window.innerHeight - viewportGap) {
-      top = Math.max(viewportGap, targetRect.top - floatingRect.height - gap);
-    }
-    floating.style.left = `${Math.round(left)}px`;
-    floating.style.top = `${Math.round(top)}px`;
   };
 
   const hideTooltip = () => {

@@ -113,6 +113,23 @@ HTMLCanvasElement.prototype.toDataURL = function (...args) {
 };
 `;
 
+/*
+ * Export is a menu now (T66), so a click on the button opens it rather than starting a PDF.
+ * The button keeps its id and its busy state, which is what the waits below still read.
+ */
+const exportPdfFromMenu = async (page) => {
+  await page.click('#export-button');
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  return page.evaluate(() => {
+    const item = [...document.querySelectorAll('#export-menu [role="menuitem"]')].find(
+      (el) => el.textContent.trim() === 'PDF'
+    );
+    if (!item) return false;
+    item.click();
+    return true;
+  });
+};
+
 export const suite = {
   name: 'math',
   async run() {
@@ -326,7 +343,7 @@ export const suite = {
       await seed(page, PDF_DOC);
       await page.evaluate(PDF_INSTRUMENT);
 
-      await page.click('#export-button');
+      await exportPdfFromMenu(page);
       let finished = false;
       for (let attempt = 0; attempt < 60; attempt += 1) {
         await sleep(500);

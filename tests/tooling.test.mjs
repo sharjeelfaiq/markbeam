@@ -191,6 +191,62 @@ export const suite = {
         (workflow.match(/PRODUCTION_URL:.*/) || ['no PRODUCTION_URL in the workflow'])[0].trim()
     });
 
+    // ---------- one licence, stated the same way in three places ----------
+
+    /*
+     * `LICENSE`, `package.json` and the README badge each declare the licence independently, and
+     * nothing makes them agree. A badge still reading MIT over an AGPL `LICENSE` is the sort of
+     * contradiction nobody notices until it is the thing being argued about — and this repo
+     * relicensed once already (T65), which is exactly when such a mismatch gets created.
+     *
+     * The `LICENSE` check looks for the licence's own title text rather than an SPDX id, because
+     * the file is the GNU text verbatim and contains no identifier.
+     */
+    const EXPECTED_SPDX = 'AGPL-3.0-only';
+    const licenceFiles = await Promise.all([
+      readFile('LICENSE', 'utf8').catch(() => ''),
+      readFile('package.json', 'utf8').catch(() => '{}'),
+      readFile('README.md', 'utf8').catch(() => '')
+    ]);
+
+    const [licenceText, manifestText, readmeText] = licenceFiles;
+    let declared = null;
+    try {
+      declared = JSON.parse(manifestText).license || null;
+    } catch (error) {
+      declared = null;
+    }
+
+    const agreements = {
+      LICENSE: /GNU AFFERO GENERAL PUBLIC LICENSE/.test(licenceText),
+      'package.json': declared === EXPECTED_SPDX,
+      'README.md': readmeText.includes(EXPECTED_SPDX) && !/license-MIT/.test(readmeText)
+    };
+    const disagreeing = Object.entries(agreements)
+      .filter(([, agrees]) => !agrees)
+      .map(([name]) => name);
+
+    checks.push({
+      name: 'LICENSE, package.json and the README agree on the licence',
+      pass: disagreeing.length === 0,
+      detail: disagreeing.length
+        ? `disagrees: ${disagreeing.join(', ')} (package.json says ${JSON.stringify(declared)})`
+        : `all three say ${EXPECTED_SPDX}`
+    });
+
+    /*
+     * §13 is the reason this licence was chosen over a permissive one — running a modified copy
+     * as a service obliges you to offer its source. A truncated or template `LICENSE` would
+     * still look plausible at a glance, so the clause is asserted by name.
+     */
+    checks.push({
+      name: 'the licence text is complete, including the clause the choice was made for',
+      pass: /13\. Remote Network Interaction/.test(licenceText) && !/\{\{/.test(licenceText),
+      detail: licenceText
+        ? `${licenceText.length} chars, §13 present=${/Remote Network Interaction/.test(licenceText)}`
+        : 'LICENSE unreadable'
+    });
+
     return checks;
   }
 };

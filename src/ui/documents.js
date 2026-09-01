@@ -159,6 +159,13 @@ let renderActions = () => {
     { label: 'Open a file…', run: () => handlers.onOpenFile?.() },
     { label: 'Rename current', run: () => handlers.onRename?.() },
     { label: 'Move to folder…', run: () => handlers.onMove?.() },
+    /*
+     * Clear sits with the other things that act on this document (T67). It used to be a
+     * toolbar button a thumb's width from Export, wearing a page-with-an-X that read as
+     * "delete this file" rather than "empty this document" — two different fears, one glyph.
+     * It also inherits the close-first behaviour below, which it needs: it raises a confirm.
+     */
+    { label: 'Clear current', run: () => handlers.onClear?.() },
     { label: 'Delete current', run: () => handlers.onDelete?.() }
   ].forEach((action) => {
     const item = document.createElement('li');

@@ -366,6 +366,12 @@ body {
   line-height: 1;
 }
 
+/*
+ * The export menu (T66) shares every rule with the heading menu below — same surface, same
+ * shadow, same rows — because two menus that look different for no reason is worse than either
+ * one. The only difference is width: format names are longer than "Heading 1".
+ */
+.export-menu,
 .format-heading-menu {
   position: fixed;
   z-index: var(--z-dialog);
@@ -377,10 +383,22 @@ body {
   box-shadow: var(--shadow-2);
 }
 
+/*
+ * Overrides the shared width above — it must come *after* that block, not before: same
+ * specificity, so the later rule wins, and at 150px "Copy rendered HTML" wrapped onto two
+ * lines inside a fixed-height row. Row height is set in CSS, so measuring it proves nothing;
+ * only looking at the menu, or measuring the label's scrollWidth, catches this.
+ */
+.export-menu {
+  width: 214px;
+}
+
+.export-menu[hidden],
 .format-heading-menu[hidden] {
   display: none;
 }
 
+.export-menu button,
 .format-heading-menu button {
   display: flex;
   align-items: center;
@@ -397,6 +415,8 @@ body {
   cursor: pointer;
 }
 
+.export-menu button:hover,
+.export-menu button:focus-visible,
 .format-heading-menu button:hover,
 .format-heading-menu button:focus-visible {
   outline: none;

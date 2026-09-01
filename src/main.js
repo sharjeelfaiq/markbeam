@@ -78,6 +78,7 @@ import { initSearch, open as openSearchSheet } from './ui/search.js';
 import { rememberDeleted, restoreDeleted } from './trash.js';
 import { initStyle, open as openStyleSheet } from './ui/style.js';
 import { initPresent, open as openPresent } from './ui/present.js';
+import { initExportMenu } from './ui/exportMenu.js';
 import { createInstallPrompt, ENGAGED_MS } from './install.js';
 import {
   hide as hideInstall,
@@ -251,10 +252,40 @@ const init = () => {
 
   // ---------- document ----------
 
+  /*
+   * A coarse pointer means a phone or a tablet, and there the focus below is not merely
+   * pointless but harmful — see `setValue()`.
+   */
+  let usesTouch = () => {
+    try {
+      return window.matchMedia?.('(pointer: coarse)').matches === true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  /*
+   * **The focus is skipped on touch devices, and that is the whole of T64.**
+   *
+   * A programmatic focus cannot raise an on-screen keyboard — browsers require a user gesture —
+   * so focusing here on boot looked free. It is not: the editor stays focused, and the
+   * visitor's *first touch anywhere in it* becomes the gesture the browser was waiting for. The
+   * keyboard then opens on a drag intended to scroll, covering half the screen, every time.
+   *
+   * The bug reads as "scrolling opens the keyboard", and the first theory — Monaco focusing its
+   * textarea on touch — is wrong: measured under emulation, a drag focuses nothing. The focus
+   * was granted at boot and merely redeemed by the touch. `tests/touch.test.mjs` asserts the
+   * arrival state for that reason rather than testing the drag alone.
+   *
+   * On a mouse machine the focus stays: opening a document and finding the caret already in it
+   * is right, and there is no keyboard to summon.
+   */
   let setValue = (value) => {
     editor.setValue(value);
     editor.revealPosition({ lineNumber: 1, column: 1 });
-    editor.focus();
+    if (!usesTouch()) {
+      editor.focus();
+    }
   };
 
   /*
@@ -1945,8 +1976,22 @@ const init = () => {
   ]);
 
   document.querySelector('#copy-button')?.addEventListener('click', copySource);
-  document.querySelector('#export-button')?.addEventListener('click', exportPdf);
-  document.querySelector('#clear-button')?.addEventListener('click', clearDocument);
+
+  /*
+   * The button opens a menu; `Ctrl+S` still calls `exportPdf()` directly (see the palette
+   * entry). A shortcut that opens a menu is not a shortcut, and the welcome document teaches
+   * Ctrl+S as "export a PDF".
+   */
+  initExportMenu({
+    items: [
+      { label: 'PDF', run: exportPdf },
+      { label: 'Slides as PDF', run: exportSlides },
+      { label: 'HTML file', run: exportHtml },
+      { label: 'Copy rendered HTML', run: copyHtml },
+      { label: 'Word (.doc)', run: exportWord },
+      { label: 'Markdown', run: exportMarkdown }
+    ]
+  });
 
   syncButton?.addEventListener('click', () => {
     if (syncButton.getAttribute('aria-disabled') === 'true') {
@@ -2041,6 +2086,7 @@ const init = () => {
     onCreate: createDocument,
     onOpenFile: openFilePicker,
     onRename: renameDocument,
+    onClear: clearDocument,
     onDelete: deleteDocument
   });
 

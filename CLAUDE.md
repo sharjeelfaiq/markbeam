@@ -4,11 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Markbeam — an online Markdown editor with live preview.
 
-`LICENSE` is MIT, copyright Sharjeel Faiq alone. That is accurate rather than asserted:
-the project began as a fork, and every piece of derived material has since been replaced —
-most substantially the vendored github-markdown-css, which `src/styles/preview.css` was
-written from scratch to displace. **Before adding third-party code, check whether its
-licence obliges an attribution this file no longer carries.** The check is
+`LICENSE` is **AGPL-3.0-only**, copyright Sharjeel Faiq alone. It was MIT until 2026-09-01;
+relicensing was possible *because* the copyright is undivided, and that is accurate rather than
+asserted: the project began as a fork, and every piece of derived material has since been
+replaced — most substantially the vendored github-markdown-css, which `src/styles/preview.css`
+was written from scratch to displace. Commits published before that date remain MIT for anyone
+who took a copy; the change binds what came after.
+
+**Two consequences that are easy to miss:**
+
+- **§13 is why this licence.** Running a *modified* Markbeam as a service means offering its
+  users the source of that modified version. The *Source* link in the status bar is the
+  interface-side half of that obligation for markbeam.app, which is worth knowing before
+  anybody removes it again — it was taken out in T57 and asked back in the same week.
+- **Contributions carry a DCO sign-off** (`git commit -s`), documented in `CONTRIBUTING.md`.
+  Contributors keep their copyright, so a *further* relicence would need their agreement —
+  which is the deliberate cost of not demanding a CLA.
+
+Every dependency is permissive (MIT, Apache-2.0, MPL-2.0, OFL-1.1), so none of them constrains
+this choice. **Before adding third-party code, check both that its licence is AGPL-compatible
+and whether it obliges an attribution this file no longer carries.** The check is
 
 ```
 git ls-files | grep -vE "package-lock|^CLAUDE\.md$|^docs/tasks\.md$" \

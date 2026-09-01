@@ -1,7 +1,7 @@
 <h1>Markbeam</h1>
 
 [![CI](https://github.com/sharjeelfaiq/markbeam/actions/workflows/ci.yml/badge.svg)](https://github.com/sharjeelfaiq/markbeam/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 An online Markdown editor with live preview — **[markbeam.app](https://markbeam.app)**
 
@@ -153,6 +153,19 @@ produced it.
 The backlog lives in [`docs/tasks.md`](docs/tasks.md), ordered by priority, with the root cause and
 measurements kept for every completed item.
 
+## Contributing
+
+Pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Commits need a DCO
+sign-off (`git commit -s`), and a change needs a test that failed before it.
+
 ## Licence
 
-[MIT](LICENSE) © Sharjeel Faiq
+[AGPL-3.0-only](LICENSE) © Sharjeel Faiq
+
+Read it, fork it, change it, run it. The one obligation: if you run a **modified** version as a
+service other people can reach, you must offer them the source of your version — §13, and the
+reason this licence rather than a permissive one. A link in the interface satisfies it, which is
+what the *Source* link in the status bar is.
+
+Markbeam was MIT until 2026-09-01. Anything published before that date stays MIT for whoever
+took a copy; the change binds what came after.

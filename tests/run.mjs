@@ -52,8 +52,10 @@ import { suite as tableEditSuite } from './tableedit.test.mjs';
 import { suite as presentSuite } from './present.test.mjs';
 import { suite as installSuite } from './install.test.mjs';
 import { suite as cspSuite } from './csp.test.mjs';
+import { suite as touchSuite } from './touch.test.mjs';
+import { suite as exportMenuSuite } from './exportMenu.test.mjs';
 
-const ALL_SUITES = [toolingSuite, cspSuite, installSuite, presentSuite, tableEditSuite, autoSyncSuite, trashSuite, customCssSuite, gistSuite, gitlabSuite, deflistSuite, typographySuite, tocSuite, searchSuite, githubSuite, seoSuite, openFileSuite, offlineSuite, formatSuite, toolbarSuite, outlineSuite, imageSuite, storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
+const ALL_SUITES = [toolingSuite, exportMenuSuite, touchSuite, cspSuite, installSuite, presentSuite, tableEditSuite, autoSyncSuite, trashSuite, customCssSuite, gistSuite, gitlabSuite, deflistSuite, typographySuite, tocSuite, searchSuite, githubSuite, seoSuite, openFileSuite, offlineSuite, formatSuite, toolbarSuite, outlineSuite, imageSuite, storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
 
 // `npm test -- mermaid` runs just that suite; substring match on the suite name.
 const filters = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));

@@ -33,13 +33,47 @@ const seedAndReload = async (page, markdown) => {
 };
 
 /** Answers the next confirm() with accept or dismiss, once. */
-const answerNextDialog = (page, accept) =>
+/*
+ * Resolves with the confirm's message, or with `null` if none arrives.
+ *
+ * **The timeout is not defensive padding.** Without it this waits forever, and a check that
+ * arms it *before* an action that turns out not to exist deadlocks the whole run rather than
+ * failing — which is exactly what happened while T67 was being written: the Clear action had
+ * moved out of the toolbar and not yet into the documents sheet, so no dialog ever fired and
+ * the suite sat for half an hour with nothing to show. A missing dialog is a failed assertion,
+ * never a hung suite.
+ */
+const answerNextDialog = (page, accept, timeoutMs = 8000) =>
   new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
+    let settled = false;
+
+    /*
+     * `settled` and the try/catch are both load-bearing. A timed-out arming leaves this suite
+     * able to arm a second handler, and if the first dialog then arrives late, two handlers
+     * answer the same one — Puppeteer throws `Cannot accept dialog which is already handled`
+     * and takes the whole suite down. A dialog answered twice is a harmless race; a suite that
+     * dies on it is not.
+     */
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      page.off('dialog', handler);
+      resolve(value);
+    };
+
+    async function handler(dialog) {
       const message = dialog.message();
-      await (accept ? dialog.accept() : dialog.dismiss());
-      resolve(message);
-    });
+      try {
+        await (accept ? dialog.accept() : dialog.dismiss());
+      } catch (error) {
+        // Already answered by another armed handler; the message is still what we came for.
+      }
+      finish(message);
+    }
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    page.on('dialog', handler);
   });
 
 const centreOf = async (page, selector) =>
@@ -101,57 +135,76 @@ export const suite = {
       });
       await page.keyboard.press('ArrowRight');
 
-      // ---- the Clear button exists and is reachable ----
-      const button = await page.evaluate(() => {
-        const el = document.querySelector('#clear-button');
-        if (!el) {
-          return null;
-        }
-        const r = el.getBoundingClientRect();
-        return {
-          visible: r.width > 0 && r.height > 0,
-          label: el.getAttribute('aria-label') || el.getAttribute('title') || ''
-        };
-      });
+      // ---- Clear lives with the other document actions, not beside Export (T67) ----
+
+      /*
+       * It used to be a toolbar button wearing a page-with-an-X, a thumb's width from Export.
+       * The icon read as "delete this file" rather than "empty this document", and a
+       * destructive control does not belong next to the one people click most. It now sits in
+       * the documents sheet beside Rename, Move and Delete — the other things that act on the
+       * current document.
+       *
+       * Both halves of the confirm are still asserted; only the route changed. The extra check
+       * is that the toolbar really did let go of it: leaving both would be the worst outcome,
+       * two ways to wipe a document and one of them still in the wrong place.
+       */
+      const openClear = async () => {
+        await page.evaluate(() => document.querySelector('#docs-button')?.click());
+        await sleep(400);
+        return page.evaluate(() => {
+          const item = [...document.querySelectorAll('#docs-actions .sheet__item')].find((el) =>
+            /clear/i.test(el.textContent || '')
+          );
+          if (!item) return false;
+          item.click();
+          return true;
+        });
+      };
+
+      const toolbarStillHasIt = await page.evaluate(() => !!document.querySelector('#clear-button'));
       checks.push({
-        name: 'a Clear button is present in the toolbar',
-        pass: !!button && button.visible,
-        detail: button ? `labelled "${button.label}"` : 'not found'
+        name: 'Clear is no longer a toolbar button beside Export',
+        pass: toolbarStillHasIt === false,
+        detail: toolbarStillHasIt ? '#clear-button is still in the toolbar' : 'gone from the toolbar'
+      });
+
+      const reachable = await page.evaluate(() => {
+        const item = [...document.querySelectorAll('#docs-actions .sheet__item')].map((el) =>
+          el.textContent.trim()
+        );
+        return item;
       });
 
       // ---- declining the confirm leaves the document intact ----
-      if (button) {
-        const dismissed = answerNextDialog(page, false);
-        await page.click('#clear-button');
-        const dismissedMessage = await dismissed;
-        await sleep(500);
+      const dismissed = answerNextDialog(page, false);
+      const foundDeclining = await openClear();
+      const dismissedMessage = await dismissed;
+      await sleep(500);
 
-        const afterDecline = await editorText(page);
-        checks.push({
-          name: 'declining the confirm leaves the document untouched',
-          pass: afterDecline.includes('Scratch document'),
-          detail: `asked "${(dismissedMessage || '').slice(0, 28)}", editor now "${afterDecline.slice(0, 36)}"`
-        });
+      const afterDecline = await editorText(page);
+      checks.push({
+        name: 'Clear is offered in the documents sheet, and declining leaves the document alone',
+        pass: foundDeclining && afterDecline.includes('Scratch document'),
+        detail: foundDeclining
+          ? `asked "${(dismissedMessage || '').slice(0, 28)}", editor now "${afterDecline.slice(0, 36)}"`
+          : `no Clear action; sheet offers: ${reachable.join(', ')}`
+      });
 
-        // ---- accepting empties both panes ----
-        const accepted = answerNextDialog(page, true);
-        await page.click('#clear-button');
-        await accepted;
-        await sleep(700);
+      // ---- accepting empties both panes ----
+      const accepted = answerNextDialog(page, true);
+      await openClear();
+      await accepted;
+      await sleep(700);
 
-        const cleared = {
-          editor: await editorText(page),
-          output: await page.evaluate(() => document.querySelector('#output').textContent.trim())
-        };
-        checks.push({
-          name: 'accepting the confirm empties both panes',
-          pass: cleared.editor === '' && cleared.output === '',
-          detail: `editor "${cleared.editor.slice(0, 20)}", preview "${cleared.output.slice(0, 20)}"`
-        });
-      } else {
-        checks.push({ name: 'declining the confirm leaves the document untouched', pass: false, detail: 'no button' });
-        checks.push({ name: 'accepting the confirm empties both panes', pass: false, detail: 'no button' });
-      }
+      const cleared = {
+        editor: await editorText(page),
+        output: await page.evaluate(() => document.querySelector('#output').textContent.trim())
+      };
+      checks.push({
+        name: 'accepting the confirm empties both panes',
+        pass: cleared.editor === '' && cleared.output === '',
+        detail: `editor "${cleared.editor.slice(0, 20)}", preview "${cleared.output.slice(0, 20)}"`
+      });
 
       // ---- Reset still restores the welcome document ----
       // Reset only prompts when the document is non-empty. Puppeteer auto-dismisses

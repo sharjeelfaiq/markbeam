@@ -12,55 +12,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-### [ ] T64 · Scrolling the editor on a phone opens the keyboard
-
-**Reported:** 2026-09-01, on a real phone. Dragging to scroll **over the source pane** raises the
-on-screen keyboard every time. Not on load — a fresh visit is quiet until the first drag — so
-`setValue()`'s `editor.focus()` (`src/main.js:257`) is not involved.
-
-**Why it is P0 rather than a polish item:** the keyboard covers roughly half a small screen, so
-every attempt to read a document on a phone ends with the document half-hidden and a dismissal
-to perform. It makes the reading case — which is most of the mobile traffic a Markdown viewer
-gets — actively unpleasant, and `/markdown-viewer` now advertises exactly that use.
-
-**Where it comes from.** None of the eight `editor.focus()` calls in `src/main.js` fire on a
-scroll; they all follow an explicit action. Monaco focuses its own hidden `textarea.inputarea`
-when a touch lands in the editor, and a drag begins with a touch — so a scroll is
-indistinguishable from a tap as far as it is concerned. The fix has to separate the two:
-movement past a small threshold is a scroll and must not leave focus behind.
-
-**Watch out for** `tests/ui.test.mjs`, which asserts that clicking the editor *does* focus Monaco
-(`textarea.inputarea` becomes `activeElement`) — a fix that simply suppresses focus on touch
-would break real tapping, and that check is what would catch it.
-
-**Done when:** on a touch device, dragging over the source pane scrolls without raising the
-keyboard, a genuine tap still focuses the editor and raises it, and a regression test drives
-synthetic touch events (`touchstart` → `touchmove` → `touchend`) under CDP touch emulation to
-prove both halves — with the drag case failing against the current code first.
-
-
----
-
-## P1 — Editor gaps
-
-*Empty — T40, T41, T42, T43 and T44 are all done. New editor gaps go here.*
-
----
-
-## P2 — Product
-
-*Empty — T45, T46, T47 and T48 are all done. New product work goes here.*
-
----
-
-## P2 — Bigger bets, decide before building
-
-*Empty — T49 is done. New bets go here.*
-
----
-
-## P3 — Housekeeping
-
 ### [ ] T53 · Two export paths no suite can reach
 
 **Why:** `.doc` is only really validated by Word, and *Copy rendered HTML* by an actual email
@@ -126,6 +77,171 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T66 · The toolbar exported one format out of six — 2026-09-01
+
+**Root cause:** the toolbar had a PDF button. HTML, clipboard HTML, Word, Markdown and the slide
+deck existed only behind `Ctrl+K`, so five exports were invisible to anyone who had not found the
+command palette.
+
+**`#export-button` is now a menu** — PDF · Slides as PDF · HTML file · Copy rendered HTML ·
+Word (.doc) · Markdown — built on the heading-menu pattern in `src/ui/formatToolbar.js` rather
+than a second one of its own. `positionBelow()` moved to `src/ui/position.js` so both menus clamp
+to the viewport by the same code; two copies would drift, and the drift shows up as a menu
+hanging off the side of a phone.
+
+**Three things deliberately unchanged:** `Ctrl+S` still calls `exportPdf()` directly — a shortcut
+that opens a menu is not a shortcut, and the welcome document teaches it as "export a PDF";
+`#export-button` keeps its id, `disabled` busy state and page counter, which four suites read;
+the palette keeps every export command, so the menu is a second route rather than a replacement.
+
+**Tests changed with the behaviour rather than around it.** `pdf.test.mjs` and `math.test.mjs`
+clicked that button expecting a PDF to start. Keeping a hidden direct-export path so they passed
+untouched would have left one button doing two contradictory things.
+
+**Two defects the screenshots caught and no assertion could:**
+
+1. *"Copy rendered HTML"* wrapped onto two lines. The first probe measured row **height** —
+   useless, because CSS fixes rows at 34px, so the text simply overflowed a same-height row.
+2. The first fix silently did nothing: `width: 214px` was written *above* the shared block
+   setting `150px`, same specificity, later rule wins. `scrollWidth > clientWidth` is what proved
+   the second attempt worked, and the CSS now says so where the next person will look.
+
+**Measured:** red first on six checks (`no #export-menu in the document`). Green after — six items
+in order, `aria-expanded` toggling, Escape returning focus, Markdown producing `export-menu.md`
+with `canvases=0` (proof the item ran its own exporter, not the old default), `Ctrl+S` giving
+`menu open=false, canvases=1`, and the menu sitting at `right 358 of 375` on a phone.
+
+### [x] T67 · A destructive button sat beside the primary one, wearing the wrong icon — 2026-09-01
+
+**Root cause:** *Clear document* was a page-with-an-X in the toolbar, a thumb's width from Export.
+The icon read as **delete this file** rather than "empty this document" — two different fears
+sharing one glyph — and a destructive control does not belong beside the one people click most.
+
+**It moved to the documents sheet**, beside Rename, Move and Delete: the other actions that
+operate on the current document, one tap from the title. It inherits that list's close-first
+behaviour, which it needs — the sheet is a modal `<dialog>`, and a native `confirm` raised
+underneath one swallows the focus return afterwards.
+
+**The test moved with it rather than being deleted.** `tests/editor.test.mjs` asserted "a Clear
+button is present in the toolbar" and drove `#clear-button` through both confirm answers. It now
+drives the sheet, keeps both assertions, and gains a third: the toolbar no longer carries it.
+Leaving both routes would have been the worst outcome — two ways to wipe a document, one still in
+the wrong place.
+
+**One harness defect this uncovered.** `answerNextDialog()` in `tests/editor.test.mjs` waited for
+a `confirm` with no timeout. Arming it for an action that had moved out of the toolbar and not yet
+into the sheet meant no dialog ever arrived, and the run sat for **36 minutes** with nothing
+printed rather than failing one check. It now resolves `null` after 8s and survives a
+double-answered dialog. A missing dialog is a failed assertion, never a hung suite.
+
+**Measured:** red first — `#clear-button is still in the toolbar`, and `no Clear action; sheet
+offers: New document, Open a file…, Rename current, Move to folder…, Delete current`. Green after,
+with declining leaving the text and accepting emptying both panes.
+
+### Verify vs reference — T66, T67
+
+*On the reference* — https://markdownlivepreview.com offers no export at all: no PDF, no HTML
+file, no Word, no slides. Its toolbar is a copy button and a theme switch, so this is a comparison
+of one menu against nothing rather than a behaviour difference.
+
+*On ours* — http://localhost:5173:
+
+- Click **Export**. Six formats appear. Choose *Markdown* and a `.md` file downloads; choose
+  *Slides as PDF* on a `---`-separated document and one landscape page per slide arrives.
+- Press `Ctrl+S` **without** touching the menu — a PDF export starts directly and the menu never
+  opens. That is the check worth doing: it is the one a careless implementation breaks.
+- At 375px, open the menu and confirm it sits fully on screen:
+  ```js
+  const r = document.querySelector('#export-menu').getBoundingClientRect();
+  [r.left >= 0, r.right <= innerWidth]   // [true, true]
+  ```
+- **Clear** is no longer in the toolbar. It is in the documents menu beside the title, with Rename
+  and Delete, and still asks before it wipes anything.
+
+### [x] T65 · MIT granted exactly what was meant to be withheld — 2026-09-01
+
+**Root cause:** the ask was "open for contributions, but nobody may do anything beyond that". MIT
+is the licence that grants the rest — use, copy, modify, publish, sublicense and sell, including
+rebranding Markbeam and selling it closed. There is no MIT-shaped version of that request.
+
+**AGPL-3.0-only**, chosen over a source-available licence (BUSL, PolyForm) because it stays genuine
+open source — contributions work normally, GitHub still labels it open source — while closing the
+door that mattered: §13 obliges anyone running a *modified* copy as a network service to offer its
+users that version's source.
+
+**Three things this rests on:**
+
+- **The relicence was possible only because the copyright is undivided.** `CLAUDE.md` has claimed
+  that from the start, backed by the attribution grep. This is the moment the claim was
+  load-bearing rather than decorative.
+- **Commits through `98e2cd2` stay MIT** for whoever took a copy. That cannot be revoked; it only
+  stops growing.
+- **§13 makes the status-bar *Source* link an obligation rather than a courtesy.** That link was
+  removed in T57 and asked back days later — it now also has a licence reason to exist.
+
+**Contributions take a DCO sign-off** (`git commit -s`), documented in `CONTRIBUTING.md`.
+Contributors keep their copyright, so a further relicence would need their agreement — the
+deliberate cost of not demanding a CLA.
+
+**Measured:** the new guard in `tests/tooling.test.mjs` was red first, naming the file that had not
+moved (`disagrees: package.json (package.json says "MIT")`), green once it did. Licence text
+verified at 34,521 characters with §13 present and no template placeholders — a truncated licence
+still looks plausible at a glance. Every dependency is permissive (MIT, Apache-2.0, MPL-2.0,
+OFL-1.1), so none constrains the choice.
+
+### Verify vs reference — T65
+
+*On the reference* — https://markdownlivepreview.com publishes no licence on the site at all.
+
+*On ours* — no user-visible change; this is a licensing and documentation change and the app
+behaves identically. What is checkable is the repo: `LICENSE` is the GNU text, `package.json` says
+`AGPL-3.0-only`, the README badge agrees, and `npm test -- tooling` fails if any of the three
+drifts from the others.
+
+### [x] T64 · Scrolling the editor on a phone opened the keyboard — 2026-09-01
+
+**Root cause — and the first diagnosis was wrong, which is the useful part.** The obvious
+explanation was that Monaco focuses its hidden textarea when a touch lands in the editor. That is
+false: measured under touch emulation, a drag focuses nothing. The real sequence was
+
+1. `setValue()` called `editor.focus()` on boot, for the welcome document, on every load;
+2. a *programmatic* focus cannot raise a keyboard — browsers require a user gesture — so the page
+   looked quiet, which is exactly why the report said "not on load";
+3. the first touch anywhere in the editor **was** that gesture. The browser saw a touch on an
+   already-focused text field and paid out the keyboard, even for a scroll.
+
+Scrolling never focused anything. It redeemed a focus granted at boot.
+
+**The fix is four lines:** skip that focus when `(pointer: coarse)` matches. On a phone it bought
+nothing anyway; on a mouse machine it stays, because finding the caret in the editor after opening
+a document is right.
+
+**The plan this replaced** — capture-phase touch handlers, `readOnly` juggling, a long-press
+exemption — was machinery against a mechanism that does not exist. The red-first rule is the only
+reason it did not ship: the test passed against the unfixed code, which meant the theory was wrong
+rather than the code being fine.
+
+**Measured:** before → after, on emulated touch: not focused on arrival ✗→✓, tab switch ✗→✓, drag
+✗→✓. Two controls stayed green throughout — a tap still focuses, and a desktop viewport still
+focuses on arrival — without which "fixed" and "focus removed entirely" are indistinguishable.
+
+### Verify vs reference — T64
+
+*On the reference* — https://markdownlivepreview.com uses a plain `<textarea>`, which a phone
+focuses only when tapped, so it never had this bug to fix.
+
+*On ours* — **this one needs a real phone; emulated touch is not a touchscreen and the suite cannot
+settle it.** Open the site, then:
+
+- drag over the source pane to scroll — the document moves and **no keyboard appears**;
+- tap once in the source pane — the keyboard opens, as it should;
+- reload and confirm the page is quiet until you touch it.
+
+On a desktop, opening a document should still land the caret in the editor:
+```js
+document.activeElement.classList.contains('inputarea')   // true
+```
 
 ### [x] T63 · GitLab sync had never met the real API either — 2026-09-01
 
