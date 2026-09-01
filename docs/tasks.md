@@ -36,6 +36,35 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P3 — Housekeeping
 
+### [ ] T63 · GitLab sync has never met the real API either
+
+**Why:** T52 closed this gap for GitHub and found the client correct. GitLab is still covered
+only by intercepted fixtures in `tests/gitlab.test.mjs`, and a fixture agrees with whatever the
+client sends. Its shape is the riskier of the two — GitHub's write path is one verb with a
+conditional field; GitLab's is two verbs and a status-code branch.
+
+**What a fixture cannot vouch for**, each named because each fails in a different direction:
+
+- **`writeFile()` sends `PUT`, then retries as `POST` on 400 or 404** (`src/gitlab.js:144`).
+  GitLab splits create and update, and answers a POST onto an existing file with **400** rather
+  than 404 — which is why PUT goes first. If that status is wrong, creating a new file fails
+  while updating works, or the reverse, and only against the real API does it show.
+- **The branch is hardcoded to `main`** (`src/gitlab.js:16`). A project defaulting to `master`
+  would fail every read and write, and nothing asks GitLab what its default actually is.
+- **`readFile()` reports `last_commit_id` as `id`** (`src/gitlab.js:136`) — the value auto-sync
+  compares to decide whether the remote moved. Wrong, and conflict detection either never fires
+  or fires constantly.
+- **The project route is a URL-encoded path** (`:32`) and `listMarkdown` pages the tree at
+  `per_page=100` (`:96`). Encoding and pagination are where a generous fixture and a strict API
+  disagree.
+
+**Done when:** `tests/live/gitlab.mjs` exists in the shape `tests/live/github.mjs` already
+proved — `.env` or environment variables, never a token in the output, cleans up what it
+creates, outside `npm test` so it cannot report a run that never happened — and one pass against
+a scratch project confirms create, update, list, open and the rejected-token path. The result is
+recorded here **including anything the fixtures had wrong**, which is the part T52 could only
+report as "nothing".
+
 ### [ ] T53 · Two export paths no suite can reach
 
 **Why:** `.doc` is only really validated by Word, and *Copy rendered HTML* by an actual email
