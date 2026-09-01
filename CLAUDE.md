@@ -478,9 +478,38 @@ load-bearing:
   over-claims what HSTS buys here: **`.app` is on the HSTS preload list as a whole TLD**, so
   browsers already refuse plain HTTP to any `.app` host. The header covers subdomains and
   satisfies the preload requirements; it is not what makes the site HTTPS-only.
-  There is **no CSP yet** — that is T59, and it needs measuring against the Monaco CDN origin,
-  the inline pre-paint script, Monaco's injected `<style>`, the user stylesheet and eval use
-  inside mermaid/jspdf/html2canvas-pro before it can be turned on.
+  It also carries a **Content-Security-Policy** (T59) — see below.
+
+### The Content-Security-Policy
+
+Served from `vercel.json`, so it exists **only in production** — the dev server the suites
+drive knows nothing about it. That is why `tests/csp.test.mjs` builds the app, serves that build
+with the real headers from `vercel.json`, and drives Chrome against it: a policy checked by
+reading the config is a policy the app has never run under, and a wrong one fails silently — a
+diagram that does not appear, a PDF that comes out blank.
+
+What it allows, and why each concession exists:
+
+- **No `'unsafe-eval'`.** Measured, not assumed: zero `eval(` and zero `new Function` across all
+  71 built chunks, mermaid, jspdf, html2canvas-pro and cytoscape included. If a dependency ever
+  introduces one, the export path breaks under the policy and the suite says so.
+- **`script-src` carries the sha256 of the inline pre-paint script, not `'unsafe-inline'`.**
+  That keeps the directive meaningful against the attacker-controlled Markdown a share link
+  carries. **Editing that script means updating the hash in the same commit** — otherwise the
+  browser blocks it and every reload flashes the wrong theme, with nothing in the console a
+  user would report. `tests/csp.test.mjs` recomputes the hash from the built page and fails on
+  drift, which is the only reason that rule is safe to rely on.
+- **`style-src 'unsafe-inline'` is unavoidable.** Monaco injects its stylesheet as a `<style>`
+  tag and `src/customCss.js` injects the user's; nonces need a per-request server and this is
+  static hosting. Style injection is a far weaker vector than script injection, and `script-src`
+  stays strict.
+- **`font-src` allows `data:`** — Vite inlines KaTeX's smallest `.woff2` files into
+  `katex-renderer-*.css` under its 4 KB `assetsInlineLimit`. That is a build behaviour, which is
+  precisely why reading the source missed it and running the app caught it.
+- **`img-src` allows `data:` and `blob:`** — images live inside the document as base64 WebP, and
+  the PDF exporter converts Mermaid SVGs to bitmaps before rasterising.
+- `cdn.jsdelivr.net` is in `script-src` for Monaco; `api.github.com` and `gitlab.com` are in
+  `connect-src` for the sync clients. Nothing else is off-origin.
 
 `tests/tooling.test.mjs` fails if a served file still names the old host, if the redirect rule
 is missing from `vercel.json`, or if CI stops pointing at the canonical host. That check is

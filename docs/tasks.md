@@ -36,30 +36,6 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P3 — Housekeeping
 
-### [ ] T59 · No Content-Security-Policy
-
-**Why:** `readSharedPayload()` renders **attacker-controlled Markdown** in this origin — a
-share link is a document someone else wrote — and DOMPurify is currently the only thing
-between that and script execution. A CSP is the second layer, and the app now has its own
-domain to set headers on (T58 added the rest).
-
-**Measure before writing the policy.** Every one of these is a way a naive policy breaks the
-app while the suite still passes:
-
-- Monaco is loaded from `cdn.jsdelivr.net`, so `script-src` must name it.
-- The pre-paint theme script is **inline** and must stay inline, so it needs a hash or
-  `'unsafe-inline'` — and a hash means the policy has to change whenever that script does.
-- Monaco injects its stylesheet as a `<style>` tag, and `src/customCss.js` injects the user's;
-  both need `style-src 'unsafe-inline'` unless nonced.
-- `img-src` must allow `data:` — images live inside the document as base64 WebP.
-- mermaid, jspdf and html2canvas-pro may use `eval`/`new Function`; that has to be checked
-  rather than assumed, because the failure is a blank export, not an error.
-
-**Done when:** a policy is served from `vercel.json`, every lazy path is exercised against it
-(mermaid render, KaTeX, PDF export, slide export, image paste, custom CSS, a share link), and
-the report records what had to be allowed and why — a CSP with `'unsafe-inline'` in
-`script-src` is worth having only if that is stated plainly rather than glossed.
-
 ### [ ] T52 · GitHub sync has never met the real API
 
 **Why:** carried forward from T37, which shipped with this stated rather than glossed. Every
@@ -136,6 +112,82 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T59 · No Content-Security-Policy — 2026-09-01
+
+**Why:** `readSharedPayload()` renders **attacker-controlled Markdown** in this origin — a share
+link is a document a stranger wrote — and DOMPurify was the only thing between that and script
+execution. T58 gave the app its own domain and a `headers` block to put a second layer in.
+
+**The policy, and every concession in it:**
+
+- **No `'unsafe-eval'`.** The task suspected mermaid, jspdf and html2canvas-pro of needing it.
+  Measured instead: **zero `eval(` and zero `new Function` across all 71 built chunks**,
+  cytoscape included. The suspicion was wrong and the policy is stricter for it.
+- **`script-src` carries the sha256 of the inline pre-paint script**, not `'unsafe-inline'` —
+  otherwise the directive would be worthless against exactly the Markdown this exists to
+  contain. The cost is real: change that script without changing the hash and the browser
+  blocks it, so every reload flashes the wrong theme with nothing in the console a user would
+  report. `tests/csp.test.mjs` recomputes the hash from the **built** page and fails on drift.
+- **`style-src 'unsafe-inline'` is unavoidable**, and worth saying plainly rather than glossing:
+  Monaco injects its stylesheet as a `<style>` tag and `src/customCss.js` injects the user's.
+  Nonces need a per-request server; this is static hosting. Script injection is the dangerous
+  half and it stays locked.
+- **`font-src data:` — the one the source could not tell me.** Vite inlines KaTeX's sub-4 KB
+  `.woff2` files into `katex-renderer-*.css` under `assetsInlineLimit`, so the app loads a font
+  from a data URL. Nothing in `src/` says so; it appeared only when the built app ran under the
+  policy, which is the entire argument for how this was tested.
+- `img-src data: blob:` for base64 images and the Mermaid-to-bitmap step in the PDF exporter;
+  `cdn.jsdelivr.net` in `script-src` for Monaco; `api.github.com` and `gitlab.com` in
+  `connect-src` for the sync clients. Nothing else leaves this origin.
+
+**The suite is shaped oddly on purpose.** Every other suite drives the dev server, where
+`vercel.json` does not exist — its headers are applied by Vercel to the built output. So
+`tests/csp.test.mjs` builds the app, serves that build from a throwaway `node:http` server with
+the real headers attached, and drives Chrome against it. A policy verified by reading the config
+is a policy nobody has run the app under, and a wrong CSP fails silently: a diagram that never
+appears, a PDF that comes out blank.
+
+**Why it asserts the header exists, separately from asserting no violations:** with no policy
+there are no violations either. The red-first run proved that — eight behavioural checks passed
+against a build carrying no CSP at all, and only `no CSP header served` and the missing hash
+failed. A suite that counted violations alone would have been green on nothing.
+
+**Measured:** red first — `1 inline script(s): sha256-bgIKBZ… MISSING`, `no CSP header served`.
+Green after — Monaco loads from the CDN, `mermaid svg=1, katex=1, data image=1`, injected user
+CSS applies (`rgb(200, 0, 100)`), PDF export 1 page, slide export 2 slides, a share link
+restores its document, **zero violations**, console clear of CSP complaints. Full suite 39/39.
+
+### Verify vs reference — T59
+
+*On the reference* — https://markdownlivepreview.com serves no `Content-Security-Policy` header
+at all:
+
+```
+curl -sI https://markdownlivepreview.com | grep -i content-security-policy   # nothing
+```
+
+Its preview renders Markdown in its own origin with no second layer behind its sanitiser, which
+is the same position Markbeam was in until this shipped.
+
+*On ours*, after deploy:
+
+```
+curl -sI https://markbeam.app/ | grep -i content-security-policy
+```
+
+shows the policy, including `script-src` with a hash and no `'unsafe-eval'`.
+
+**The check worth doing by hand**, because it is the one that would embarrass us: open
+https://markbeam.app, then in DevTools → Console confirm there are no CSP violation messages
+while you exercise a Mermaid fence, a `$x^2$` formula, an image paste, *Custom preview CSS*,
+*Export as PDF* and *Present slides…*. A CSP failure does not throw — the feature simply does
+nothing — so the console is where it shows.
+
+Locally there is **no user-visible difference at all**: `vercel.json` headers do not apply to
+`npm run dev`, so `http://localhost:5173` behaves exactly as before. `npm test -- "content
+security"` is the local equivalent, and it is the only place the policy is exercised before
+production.
 
 ### [x] T62 · Speed Insights, and the promise it had to be squared with — 2026-08-31
 
