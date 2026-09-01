@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Copy rendered HTML (T4, #39, #53).
@@ -72,10 +72,7 @@ const runCommand = async (page, title) => {
 const seedAndReload = async (page, markdown) => {
   await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 /** rgb()/rgba() -> perceived luminance 0..255, or null when unparseable. */

@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * File exports: HTML, Word and Markdown (T10, #99, #57).
@@ -57,10 +57,7 @@ const RICH_DOC = [
 
 const boot = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(2500);
+  await ready(page);
 };
 
 /** Runs a palette command by visible title; false when there is no such command. */

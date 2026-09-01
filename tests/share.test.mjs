@@ -1,4 +1,4 @@
-import { editorText, seedDocument, sleep, withPage, URL as TARGET } from './lib.mjs';
+import { editorText, ready, seedDocument, sleep, withPage, URL as TARGET } from './lib.mjs';
 
 /*
  * Shareable URL links (T11).
@@ -24,10 +24,7 @@ const SHARED = [
 ].join('\n');
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 /** Runs a palette command by visible title; false when there is no such command. */
@@ -200,7 +197,14 @@ export const suite = {
       await page.evaluate((url) => {
         location.hash = new globalThis.URL(url).hash;
       }, shareUrl);
-      await sleep(2000);
+      // The import is a hashchange handler, so wait for its result rather than for a duration.
+      await page
+        .waitForFunction(
+          (count) => JSON.parse(localStorage.getItem('markbeam:docs') || 'null')?.v?.length > count,
+          { timeout: 15000 },
+          before.length
+        )
+        .catch(() => {});
 
       const text = await editorText(page);
       const after = (await docIndex(page)) || [];

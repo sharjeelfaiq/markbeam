@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, withPage, ready } from './lib.mjs';
 
 /*
  * Definition lists (T43).
@@ -38,10 +38,7 @@ const DOC = [
 ].join('\n');
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 export const suite = {

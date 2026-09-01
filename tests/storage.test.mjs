@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { withPage, ready } from './lib.mjs';
 
 /*
  * Storage migration.
@@ -41,10 +41,7 @@ const seedLegacy = (page, records) =>
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 export const suite = {

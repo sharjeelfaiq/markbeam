@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer-core';
-import { CHROME, URL as TARGET, sleep } from './lib.mjs';
+import { CHROME, URL as TARGET, ready, sleep } from './lib.mjs';
 
 /*
  * The keyboard on a phone (T64).
@@ -53,7 +53,9 @@ const launch = (hasTouch) =>
 const boot = async (page) => {
   await page.goto(TARGET, { waitUntil: 'networkidle2', timeout: 60000 });
   await page.waitForSelector(EDITOR, { timeout: 30000 });
-  await sleep(2500);
+  // Focus is granted by setValue(), which runs once the welcome document is rendered — so the
+  // measurement has to wait for that, not for a guess at how long it takes.
+  await ready(page);
 };
 
 export const suite = {

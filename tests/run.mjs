@@ -54,6 +54,8 @@ import { suite as installSuite } from './install.test.mjs';
 import { suite as cspSuite } from './csp.test.mjs';
 import { suite as touchSuite } from './touch.test.mjs';
 import { suite as exportMenuSuite } from './exportMenu.test.mjs';
+import { runPool } from './pool.mjs';
+import { cpus } from 'node:os';
 
 const ALL_SUITES = [toolingSuite, exportMenuSuite, touchSuite, cspSuite, installSuite, presentSuite, tableEditSuite, autoSyncSuite, trashSuite, customCssSuite, gistSuite, gitlabSuite, deflistSuite, typographySuite, tocSuite, searchSuite, githubSuite, seoSuite, openFileSuite, offlineSuite, formatSuite, toolbarSuite, outlineSuite, imageSuite, storageSuite, documentsSuite, historySuite, exportSuite, shareSuite, printSuite, scrollSuite, alertsSuite, emojiSuite, highlightSuite, mathSuite, gfmSuite, editorSuite, copySuite, mermaidSuite, pdfSuite, uiSuite];
 
@@ -101,10 +103,91 @@ const refreshed = await refreshSources('src');
 await new Promise((resolve) => setTimeout(resolve, 500));
 process.stdout.write('\nRefreshed ' + refreshed.length + ' source files\n');
 
-const results = [];
+/*
+ * How the run is scheduled (T94).
+ *
+ * **`tooling` runs alone, first.** It writes a probe into `src/` and calls `refreshSources`,
+ * which touches every source file — Vite's watcher then hot-reloads every open page. Any suite
+ * running beside it would be reloaded mid-assertion, and `CLAUDE.md` records what that produces:
+ * results that look real and are not. Everything else is safe together, because Puppeteer gives
+ * each `launch()` a fresh temporary profile, so no two suites share `localStorage`.
+ *
+ * Concurrency defaults to four or one fewer than the cores, whichever is smaller. Several suites
+ * rasterise PDFs and are CPU-bound, so oversubscribing makes the whole run slower rather than
+ * faster.
+ */
+const EXCLUSIVE = new Set(['tooling']);
+const CONCURRENCY = Math.max(
+  1,
+  Number(process.env.MARKBEAM_CONCURRENCY) || Math.min(4, Math.max(1, cpus().length - 1))
+);
 
-for (const suite of SUITES) {
-  process.stdout.write(`\n▸ ${suite.name}\n`);
+/*
+ * Longest first, **measured rather than guessed**. Starting a heavy suite late leaves one
+ * straggler running alone while every other worker idles: the first ordering here was written
+ * from intuition, put `history` nowhere in the list, and `history` turned out to be the longest
+ * suite in the run at 150s. It started around the halfway mark and finished last, so it alone
+ * set the wall clock at 306s against an ideal of 257s.
+ *
+ * `history` is long for a reason that cannot be optimised away from the test side: it waits out
+ * the real 20s autosave fuse six times, and three of those are *absence* assertions — proving no
+ * snapshot appeared means waiting the whole window, not waiting for a result. So it has to go
+ * first.
+ *
+ * These names must match `suite.name`, not the file name. Re-measure from the summary this
+ * runner prints rather than editing the list from memory.
+ */
+const HEAVY = [
+  'history',
+  'auto sync',
+  'github sync',
+  'content security policy',
+  'install prompt',
+  'search',
+  'math',
+  'local images',
+  'ui shell',
+  'table of contents',
+  'documents',
+  'gitlab',
+  'share links',
+  'scroll sync',
+  'presentation',
+  'custom css',
+  'trash',
+  'pdf export',
+  'gfm modes',
+  'outline',
+  'export menu',
+  'touch'
+];
+/*
+ * A name in `HEAVY` that matches nothing is a silent no-op — the suite it was meant to schedule
+ * first goes back to running last, and the only symptom is a slower run. Say so out loud.
+ */
+const unknown = HEAVY.filter((name) => !ALL_SUITES.some((suite) => suite.name === name));
+if (unknown.length > 0) {
+  process.stdout.write(`\nHEAVY names no suite: ${unknown.join(', ')}\n`);
+}
+
+const weight = (suite) => {
+  const index = HEAVY.indexOf(suite.name);
+  return index === -1 ? HEAVY.length : index;
+};
+
+const exclusive = SUITES.filter((suite) => EXCLUSIVE.has(suite.name));
+const shared = SUITES.filter((suite) => !EXCLUSIVE.has(suite.name)).sort((a, b) => weight(a) - weight(b));
+
+/*
+ * Output is buffered per suite and printed when that suite finishes. Four suites writing to
+ * stdout as they go would interleave into something unreadable, and a failing check has to stay
+ * attached to the suite it came from.
+ */
+const runSuite = async (suite) => {
+  const started = Date.now();
+  const lines = [`
+▸ ${suite.name}`];
+
   try {
     const checks = await suite.run();
     const failed = checks.filter((check) => !check.pass);
@@ -112,23 +195,50 @@ for (const suite of SUITES) {
     checks.forEach((check) => {
       const mark = check.pass ? '  ✓' : '  ✗';
       const detail = check.detail === undefined ? '' : `  — ${check.detail}`;
-      process.stdout.write(`${mark} ${check.name}${detail}\n`);
+      lines.push(`${mark} ${check.name}${detail}`);
     });
 
-    results.push({ name: suite.name, passed: failed.length === 0, failed: failed.length });
+    const seconds = ((Date.now() - started) / 1000).toFixed(1);
+    process.stdout.write(lines.join('\n') + '\n');
+    return { name: suite.name, passed: failed.length === 0, failed: failed.length, seconds };
   } catch (error) {
-    process.stdout.write(`  ✗ suite threw: ${error.message}\n`);
-    results.push({ name: suite.name, passed: false, failed: 1 });
+    const seconds = ((Date.now() - started) / 1000).toFixed(1);
+    lines.push(`  ✗ suite threw: ${error.message}`);
+    process.stdout.write(lines.join('\n') + '\n');
+    return { name: suite.name, passed: false, failed: 1, seconds };
   }
+};
+
+const startedAll = Date.now();
+const results = [];
+
+for (const suite of exclusive) {
+  results.push(await runSuite(suite));
 }
+
+results.push(...(await runPool(shared, CONCURRENCY, runSuite)));
 
 const broken = results.filter((result) => !result.passed);
 
 process.stdout.write('\n' + '─'.repeat(48) + '\n');
 results.forEach((result) => {
-  process.stdout.write(`${result.passed ? 'PASS' : 'FAIL'}  ${result.name}\n`);
+  process.stdout.write(`${result.passed ? 'PASS' : 'FAIL'}  ${result.name}  ${result.seconds}s\n`);
 });
 process.stdout.write('─'.repeat(48) + '\n');
+
+/*
+ * The wall clock and the five slowest suites, printed every run.
+ *
+ * This task began with nobody knowing where fifteen minutes went, and the answer took a
+ * measuring session to find. Printing it means the next person optimising the suite starts from
+ * a number rather than a guess — and a suite that quietly becomes the new bottleneck announces
+ * itself instead of hiding inside the total.
+ */
+const slowest = [...results].sort((a, b) => Number(b.seconds) - Number(a.seconds)).slice(0, 5);
+process.stdout.write(
+  `${((Date.now() - startedAll) / 1000).toFixed(1)}s wall clock, ${CONCURRENCY} suite(s) at a time\n`
+);
+process.stdout.write(`slowest: ${slowest.map((r) => `${r.name} ${r.seconds}s`).join(' · ')}\n`);
 
 if (broken.length > 0) {
   process.stdout.write(`\n${broken.length} suite(s) failed\n`);

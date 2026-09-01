@@ -1,4 +1,4 @@
-import { withPage, sleep, editorText, seedDocument } from './lib.mjs';
+import { withPage, sleep, editorText, seedDocument, ready } from './lib.mjs';
 
 /*
  * Formatting shortcuts (T34).
@@ -13,10 +13,7 @@ import { withPage, sleep, editorText, seedDocument } from './lib.mjs';
  */
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 /** Puts a known line in the editor and selects the word `target` inside it. */

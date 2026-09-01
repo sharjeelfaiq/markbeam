@@ -15,9 +15,21 @@ import { withPage, sleep, editorText } from './lib.mjs';
  * caches nothing.
  */
 
+/*
+ * Offline, the editor may legitimately never appear — that is the failure this suite exists to
+ * catch — so the wait is bounded and swallowed rather than fatal: the check below reports it.
+ */
 const reload = async (page) => {
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await sleep(2500);
+  await page
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('#editor .monaco-editor');
+        return !!el && el.getBoundingClientRect().height > 50;
+      },
+      { timeout: 20000 }
+    )
+    .catch(() => {});
 };
 
 /** Resolves once a worker is not merely registered but actually controlling this page. */
@@ -44,7 +56,7 @@ export const suite = {
 
       // ---------- warm the caches while online ----------
 
-      await sleep(2500);
+      // `waitForController` already polls for 20s; a sleep in front of it only delays the pass.
       const controlled = await waitForController(page);
 
       checks.push({

@@ -1,4 +1,4 @@
-import { editorText, withPage, sleep } from './lib.mjs';
+import { editorText, withPage, sleep, ready } from './lib.mjs';
 
 /*
  * Shell behaviour: view modes, the beam divider, palette, toasts, theme persistence and
@@ -17,7 +17,7 @@ export const suite = {
   async run() {
     return withPage(async (page, errors) => {
       const checks = [];
-      await sleep(2500);
+      await ready(page);
 
       // ---- fonts actually loaded (self-hosted, no CDN) ----
       const fonts = await page.evaluate(async () => {
@@ -395,10 +395,7 @@ export const suite = {
         localStorage.getItem('markbeam:scroll_bar_settings')
       );
       await page.reload({ waitUntil: 'networkidle2' });
-      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-        timeout: 30000
-      });
-      await sleep(1500);
+      await ready(page);
       const afterReload = await readSync();
       checks.push({
         name: 'the toggle drives the stored setting and survives a reload',
@@ -520,10 +517,7 @@ export const suite = {
           .forEach((k) => localStorage.removeItem(k));
       });
       await page.reload({ waitUntil: 'networkidle2' });
-      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-        timeout: 30000
-      });
-      await sleep(2500);
+      await ready(page);
 
       /*
        * `revealInPreview()` scrolls the pane with `behavior: 'smooth'`, so the measurement has

@@ -1,4 +1,4 @@
-import { editorText, seedDocument, sleep, withPage } from './lib.mjs';
+import { editorText, seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Editor context menu and document clearing (#146).
@@ -26,10 +26,7 @@ const SAMPLE = '# Scratch document\n\nSome text that must survive a declined con
 const seedAndReload = async (page, markdown) => {
   await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 /** Answers the next confirm() with accept or dismiss, once. */

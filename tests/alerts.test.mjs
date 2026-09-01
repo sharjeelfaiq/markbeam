@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * GitHub alert callouts (#127).
@@ -41,10 +41,7 @@ const FIXTURE = [
 const seedAndReload = async (page, markdown) => {
   await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(2000);
+  await ready(page);
 };
 
 const readAlerts = (page) =>

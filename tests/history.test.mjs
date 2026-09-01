@@ -1,4 +1,4 @@
-import { withPage, sleep, editorText, seedDocument } from './lib.mjs';
+import { withPage, sleep, editorText, seedDocument, ready } from './lib.mjs';
 
 /*
  * Autosave history (T22).
@@ -29,10 +29,7 @@ const historyKey = (id) => `markbeam:history:${id}`;
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 const activeId = (page) =>
@@ -89,7 +86,14 @@ const runCommand = async (page, title) => {
   await page.keyboard.down('Control');
   await page.keyboard.press('KeyK');
   await page.keyboard.up('Control');
-  await sleep(400);
+  // The palette paints its items on open; wait for one to exist rather than for a duration.
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelectorAll('#palette .sheet__item, #palette-list .sheet__item').length > 0,
+      { timeout: 10000 }
+    )
+    .catch(() => {});
 
   const clicked = await page.evaluate((needle) => {
     const item = [...document.querySelectorAll('#palette .sheet__item')].find((el) =>

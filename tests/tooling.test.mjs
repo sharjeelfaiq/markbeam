@@ -1,6 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { URL as TARGET } from './lib.mjs';
 import { refreshSources, secondsSinceTouched } from './freshness.mjs';
+import { runPool } from './pool.mjs';
 
 /*
  * The test runner's own guarantees (T55).
@@ -245,6 +246,43 @@ export const suite = {
       detail: licenceText
         ? `${licenceText.length} chars, §13 present=${/Remote Network Interaction/.test(licenceText)}`
         : 'LICENSE unreadable'
+    });
+
+    // ---------- the pool the runner is built on (T94) ----------
+
+    /*
+     * Two properties, and the second is the one a stopwatch cannot check.
+     *
+     * Running in parallel is easy to confirm by timing. **Returning results in input order is
+     * not**, and a pool that scrambles them would still look fast while making every failure
+     * report point at the wrong suite — which is worse than a slow run, because it is a slow
+     * run plus a lie.
+     */
+    const seen = [];
+    let inFlight = 0;
+    let peak = 0;
+
+    const ordered = await runPool([5, 1, 4, 2, 3], 2, async (ms, index) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, ms * 20));
+      inFlight -= 1;
+      seen.push(index);
+      return `#${index}`;
+    });
+
+    checks.push({
+      name: 'the pool runs work concurrently, up to its limit',
+      pass: peak === 2,
+      detail: `peak concurrency ${peak} against a limit of 2`
+    });
+
+    checks.push({
+      name: 'and returns results in input order however they finish',
+      // The inputs are deliberately staggered so completion order (1,2,3,4,5) differs from
+      // input order — a pool that simply pushed results would pass with the wrong array.
+      pass: ordered.join(',') === '#0,#1,#2,#3,#4' && seen.join(',') !== '0,1,2,3,4',
+      detail: `results ${ordered.join(',')} from completion order ${seen.join(',')}`
     });
 
     return checks;

@@ -138,81 +138,6 @@ suite covers both entry points.
 
 ---
 
-## P2 — The loop itself
-
-### [ ] T94 · The suite takes fifteen minutes because it runs one browser at a time
-
-**Why:** every `/work` and every `/ship` waits on it, and so does every push — CI has been taking
-16–18 minutes per run, of which the browser suite is nearly all. It is the single biggest tax on
-the loop this project actually runs.
-
-**Measured, on this machine:**
-
-- **68 browser launches per run** — 65 `withPage` calls plus 3 direct. Several suites launch
-  more than one of their own: `touch` starts a phone *and* a desktop, `install` starts three.
-  At 5–8s of startup, boot and Monaco load each, that is 6–9 minutes before a single assertion.
-- **`tests/run.mjs:106` is a plain `for` loop.** Suites run strictly serially, on one core.
-- Monaco is fetched from `cdn.jsdelivr.net` on every page load, so each launch pays a network
-  round trip.
-
-**Approach:** a worker pool in `tests/run.mjs` running 3–4 suites concurrently.
-
-**Traps, and the reason this is not a ten-line change:**
-
-- **Suites share one dev server and one origin, so they share `localStorage`.** `seedDocument()`
-  writes `markbeam:docs` and friends; two suites seeding at once would read each other's
-  documents and fail in ways that look like product bugs. Each worker needs its own Chrome
-  **user-data-dir**, which is what gives it a separate storage partition.
-- **The freshness pass must run once, before the pool starts**, not per worker — `refreshSources`
-  touches every file in `src/`, and `tooling` asserts nothing is older than 30s. Concurrent
-  sweeps would fight each other and that assertion.
-- **Output has to stay attributable.** Interleaved lines from four suites are unreadable; buffer
-  each suite's checks and print them as a block when it finishes, keeping the existing format.
-- **Failures must not become flaky-by-parallelism.** If a suite only passes when run alone, that
-  is a real isolation bug and the fix is isolation, not serialising it again quietly.
-- Heavy suites — `csp` (runs a full `vite build` inside itself), `pdf`, `math`, `present`,
-  `exportMenu` — are CPU-bound on rasterisation, so the pool should start those first rather
-  than leaving one straggler running alone at the end.
-
-**Done when:** `npm test` runs suites concurrently, the full run is at least twice as fast on a
-four-core machine, output is still one readable block per suite, a deliberately failing check is
-still attributed to the right suite, and three consecutive full runs agree — a parallel runner
-that is fast and occasionally wrong is worse than a slow one.
-
-### [ ] T95 · Four and a half minutes of the suite is `sleep()`
-
-**Why:** `tests/*.mjs` contains **267 seconds** of literal `sleep(...)` calls — `sleep(2500)`
-after every boot, `sleep(600)` after every palette command, `sleep(700)` after every export
-click. Not all of it executes in one run, but it is the second-largest block of wall clock after
-browser startup, and most of it waits for something that already finished.
-
-**`CLAUDE.md` already forbids this pattern** and explains why with a real failure: "`page.emulateMediaType(null)` resolving does not mean the page's `matchMedia` listeners have run.
-Anything depending on that must `waitForFunction` on the state it is about to measure, never
-`sleep`." The sleeps are slower *and* less reliable than the rule the repo already states.
-
-**Approach:** replace each fixed wait with a `waitForFunction` on the state the next line
-measures — the palette being open, the toast being present, `window.__downloads.length`, the
-export button's `disabled` flag going false. `tests/touch.test.mjs` and `tests/exportMenu.test.mjs`
-already do this in places and are the pattern to copy.
-
-**Traps:**
-
-- **A wait that never settles must fail, not hang.** `answerNextDialog()` had exactly this bug
-  and cost a 36-minute run that printed nothing (T67); every replacement needs a timeout that
-  turns into a failed assertion.
-- **Some sleeps are debounces, not laziness.** Mermaid renders on a 150ms debounce and autosave
-  runs on a much longer fuse; those waits are load-bearing and must become
-  `waitForFunction` on the *result*, not be deleted.
-- Do it suite by suite with a green run between, or a single sweep will produce a dozen
-  simultaneous flakes and no way to tell which change caused which.
-
-**Done when:** no `sleep()` remains that is waiting for a state the test could observe directly,
-the suites that keep one carry a comment saying what it is waiting for and why it cannot be
-observed, and the full run is measurably shorter with no new flakiness across three runs.
-
-
----
-
 ## P2 — Product depth
 
 *Individually smaller than P1, and each closes a gap a competitor either advertises or ignores.*
@@ -553,6 +478,123 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T94 · The suite took eighteen minutes because it ran one browser at a time — 2026-09-01
+
+**Root cause:** `tests/run.mjs:106` was a plain `for` loop. Forty-one suites, 68 browser
+launches, strictly serial, on one core of twelve. Every `/work`, every `/ship` and every push
+waited on it, and CI with it.
+
+**Two things in the filed task were wrong, and both mattered:**
+
+1. **Storage isolation did not need arranging — it was already free.** The task said each worker
+   needed its own Chrome `user-data-dir` so suites could not read each other's `localStorage`.
+   No suite passes `userDataDir`, so Puppeteer already gives every `launch()` a fresh temporary
+   profile: 68 launches, 68 isolated partitions. The work that looked hardest did not exist.
+   The inverse is now the hazard worth writing down — **adding** a `userDataDir` would make
+   suites start sharing storage.
+2. **The real hazard is one suite, not all of them.** `tests/tooling.test.mjs` writes a probe
+   into `src/` and calls `refreshSources('src')`, which touches every source file; Vite's watcher
+   then hot-reloads *every open page*. Any suite running beside it is reloaded mid-assertion —
+   the "results that look real and are not" failure `CLAUDE.md` already warns about, arriving
+   from inside the runner. So the shape is not "run everything at once": it is **`tooling` alone
+   first, then everything else pooled**. `openfile.test.mjs` also writes files, but into its own
+   `mkdtemp` directory, so it is safe.
+
+**`HEAVY` ordering was worth a minute and a half on its own.** The first list was written from
+intuition and put `history` nowhere in it — and `history` turned out to be the longest suite in
+the run at 150s. It started around the halfway mark and finished alone, setting the wall clock at
+306s against an ideal of 257s. Reordered from the measured summary, the same work finished in
+220s. The list is now guarded: a `HEAVY` name matching no suite prints a warning, because a typo
+there is otherwise a silent no-op whose only symptom is a slower run.
+
+`tests/pool.mjs` is extracted rather than inlined so the property that matters can be tested
+directly: **results come back in input order however they finish**. A pool that is fast but
+scrambles its results still looks like a win while attributing every failure to the wrong suite.
+
+**Red first:** the two pool checks in `tooling` could not resolve `./pool.mjs` before it existed.
+Green after at `peak concurrency 2 against a limit of 2` and `results #0,#1,#2,#3,#4 from
+completion order 1,0,2,3,4`.
+
+**Measured, same machine, same dev server, 41/41 green in every run:**
+
+| | wall clock |
+|---|---|
+| before — HEAD, serial | **1100s** (18m20s) |
+| after — pooled, first `HEAVY` order | 306s |
+| after — pooled, measured `HEAVY` order | **220s** (3 consecutive runs: 222s / 230s / 216s) |
+
+**5.0×.** Sum of per-suite seconds is ~900s across 4 workers = 225s, so the pool is saturated:
+the run is now bounded by total work, not by scheduling.
+
+**Attribution verified rather than assumed:** a check was set to `pass: false` on purpose, and
+with four suites running concurrently the `✗` printed inside `▸ emoji`'s own block with the
+summary reading `FAIL emoji`. Reverted after.
+
+### [x] T95 · Four and a half minutes of the suite was `sleep()` — 2026-09-01
+
+**Root cause:** 267 seconds of literal `sleep(...)` across `tests/*.mjs` — `sleep(2500)` after
+every boot, `sleep(1800)` after every seeded reload, `sleep(400)` after every palette command.
+`CLAUDE.md` already forbade the pattern and explained why with a real CI failure: a resolved
+`page.emulateMediaType(null)` does not mean the page's `matchMedia` listeners have run. The
+sleeps were slower *and* less reliable than the rule the repo already stated.
+
+Two helpers in `tests/lib.mjs` replaced almost all of it:
+
+- **`ready(page)`** — Monaco present *and* `#output` rendered *and* fonts settled. That is what
+  the `sleep(2500)` opening ten suites was actually waiting for.
+- **`waitFor(page, predicate, label)`** — a `waitForFunction` that **fails with a name** instead
+  of hanging. Not politeness: an unlabelled unbounded wait cost a 36-minute run that printed
+  nothing during T67, and a sweep like this creates dozens of new waits.
+
+**Where a wait is bounded and swallowed, that is deliberate.** The editor after an offline
+reload, or a lazily-imported dependency, is something the check is *allowed* to find missing —
+so those wait with `.catch(() => {})` and let the check report the absence, rather than the
+suite dying on a timeout before it can.
+
+**What survives, and why:** `history` still waits out the real 20s autosave fuse six times, and
+three of those are **absence** assertions — proving no snapshot appeared means waiting the whole
+window, not waiting for a result. Shortening it would need a test-only hook in `src/history.js`,
+which is a product change to make a test faster and was refused here. `history` is consequently
+the longest suite in the run and is scheduled first for that reason.
+
+**Measured:** literal `sleep()` budget **267.0s → 176.9s**. Combined with T94 the full run went
+from 1100s to 220s; the sweep alone accounted for the 306s → 220s step together with the `HEAVY`
+reorder.
+
+### Verify vs reference — T94 + T95
+
+*On the reference* — https://markdownlivepreview.com is not involved. This is test tooling with
+**no user-visible difference at all**: no product file changed, and the built output is
+byte-identical to before. Inventing a user-facing check here would be dishonest.
+
+*On ours* — the difference is visible to whoever runs the suite:
+
+```
+npm run dev            # one terminal
+npm test               # another
+```
+
+The summary now ends with a line that did not exist before:
+
+```
+220.4s wall clock, 4 suite(s) at a time
+slowest: history 155.1s · auto sync 73.3s · github sync 63.9s · local images 41.3s · content security policy 37.3s
+```
+
+Three things to check against the old behaviour:
+
+1. **Wall clock.** `git stash` the `tests/` changes and run `npm test` on HEAD to reproduce the
+   1100s baseline; pop and re-run for ~220s. Same machine, same dev server, or the number means
+   nothing.
+2. **Output is still one readable block per suite.** Run `npm test -- emoji alerts storage` —
+   three suites run concurrently and their checks never interleave, because output is buffered
+   per suite and printed when that suite finishes.
+3. **A failure still names its suite.** Set any check to `pass: false` and run it alongside
+   others: the `✗` prints inside that suite's `▸` block and the summary reads `FAIL <suite>`.
+
+`MARKBEAM_CONCURRENCY=1 npm test` restores serial execution if a suite ever needs to be
+bisected against parallelism.
 
 ### [x] T69 · The Word export shipped CSS Word cannot read — 2026-09-01
 

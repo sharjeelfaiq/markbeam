@@ -502,6 +502,48 @@ Three rules learned the hard way here:
   Where a check cannot be proved locally, say so and treat the CI run as the gate rather
   than reporting the fix as verified.
 
+### How the run is scheduled
+
+Suites run **concurrently** (`tests/pool.mjs`, `min(4, cores - 1)`, override with
+`MARKBEAM_CONCURRENCY`). Two things make that safe, and both are easy to break:
+
+- **`tooling` runs alone, first.** It writes a probe into `src/` and calls `refreshSources`,
+  which touches every source file — Vite's watcher then hot-reloads *every open page*. Any
+  suite running beside it gets reloaded mid-assertion, which is the "results that look real
+  and are not" failure above, arriving from inside the runner. Anything else that writes to
+  `src/` belongs in `EXCLUSIVE` too. `openfile.test.mjs` also writes files, but into its own
+  `mkdtemp` directory, so it is safe.
+- **Storage isolation is free, not arranged.** No suite passes `userDataDir`, so Puppeteer
+  gives every `launch()` a fresh temporary profile. Add a `userDataDir` and suites start
+  sharing `localStorage` with each other.
+
+Output is buffered per suite and printed as one block when that suite finishes; four suites
+writing as they go would interleave into something no failure could be attributed from. The
+summary prints per-suite seconds, the wall clock and the slowest five, so the next person
+optimising this starts from a number rather than a guess — which is how T94 started.
+
+**Heavy suites are listed first** in `HEAVY`. Starting the longest last leaves one straggler
+rasterising alone while three workers idle.
+
+### Waits, not sleeps
+
+`sleep()` waiting for the app to reach a state is banned — it is both slower and less reliable
+than waiting for the state, and CI failure (2) above is exactly that bug. Use:
+
+- **`ready(page)`** — Monaco present *and* `#output` rendered *and* fonts settled. This is what
+  the `sleep(2500)` that used to open ten suites was actually waiting for.
+- **`waitFor(page, predicate, label)`** — a `waitForFunction` that **fails with a name** rather
+  than hanging. Not politeness: an unlabelled unbounded wait cost a 36-minute run that printed
+  nothing during T67.
+
+Where the wait is for something the check is *allowed* to find missing — the editor after an
+offline reload, a lazily-imported dependency — bound it and swallow the timeout
+(`.catch(() => {})`) so the check reports the absence instead of the suite dying on it.
+
+A `sleep()` that survives must say why in a comment. The real ones are debounces and fuses —
+Mermaid's 150ms render debounce, the autosave delay — and even those should wait on the
+*result* where one is observable.
+
 ## Deployment
 
 Vercel builds from source (`vercel.json`, framework `vite`). **`dist/` is gitignored** — do

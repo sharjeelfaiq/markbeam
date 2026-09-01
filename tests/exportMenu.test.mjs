@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * The Export menu (T66).
@@ -49,10 +49,7 @@ HTMLCanvasElement.prototype.toDataURL = function (...args) {
 const DOC = ['# Export menu fixture', '', 'Something short to export.'].join('\n');
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 const menuState = (page) =>

@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Regression cover for PDF export.
@@ -124,10 +124,7 @@ export const suite = {
 
       await page.evaluateOnNewDocument(INSTRUMENT);
       await page.reload({ waitUntil: 'networkidle2' });
-      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-        timeout: 30000
-      });
-      await sleep(2500);
+      await ready(page);
 
       await page.evaluate(() => {
         window.__pdfPages = [];
@@ -210,7 +207,17 @@ export const suite = {
       await page.waitForFunction(() => !!document.querySelector('#output .mermaid svg'), {
         timeout: 30000
       });
-      await sleep(2500);
+      // A present svg is not a laid-out one, and the ink measurement below reads its geometry.
+      await page
+        .waitForFunction(
+          () => {
+            const svg = document.querySelector('#output .mermaid svg');
+            return !!svg && svg.getBoundingClientRect().width > 0;
+          },
+          { timeout: 15000 }
+        )
+        .catch(() => {});
+      await page.evaluate(() => document.fonts.ready).catch(() => {});
 
       // The width the browser actually lays the diagram out at — the yardstick.
       const laidOutWidth = await page.evaluate(() =>

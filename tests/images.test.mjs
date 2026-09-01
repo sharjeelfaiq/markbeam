@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Local image insertion (T36).
@@ -12,10 +12,7 @@ import { seedDocument, sleep, withPage } from './lib.mjs';
 const DOCS_KEY = 'markbeam:docs';
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 
   await page.evaluate(() => {
     const canvasBlob = (canvas, type, quality) =>

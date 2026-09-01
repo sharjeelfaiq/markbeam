@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Presentation mode (T51).
@@ -43,17 +43,21 @@ HTMLCanvasElement.prototype.toDataURL = function (...args) {
 `;
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(2000);
+  await ready(page);
 };
 
 const runCommand = async (page, needle) => {
   await page.keyboard.down('Control');
   await page.keyboard.press('KeyK');
   await page.keyboard.up('Control');
-  await sleep(400);
+  // The palette paints its items on open; wait for one to exist rather than for a duration.
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelectorAll('#palette .sheet__item, #palette-list .sheet__item').length > 0,
+      { timeout: 10000 }
+    )
+    .catch(() => {});
   const clicked = await page.evaluate((text) => {
     const item = [...document.querySelectorAll('#palette .sheet__item')].find((el) =>
       el.textContent.toLowerCase().includes(text.toLowerCase())

@@ -1,4 +1,4 @@
-import { withPage, sleep } from './lib.mjs';
+import { withPage, sleep, ready } from './lib.mjs';
 
 /*
  * Markdown modes, GFM features and footnotes (T8).
@@ -54,10 +54,7 @@ const FIXTURE = [
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 const seed = async (page, mode) => {

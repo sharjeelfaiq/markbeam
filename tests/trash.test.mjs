@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Deleted documents are recoverable (T45).
@@ -19,10 +19,7 @@ import { seedDocument, sleep, withPage } from './lib.mjs';
 const MAX_TRASH_BYTES = 256 * 1024;
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 const openDocs = async (page) => {

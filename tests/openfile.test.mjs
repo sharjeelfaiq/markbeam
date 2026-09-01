@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { withPage, sleep, editorText, seedDocument } from './lib.mjs';
+import { withPage, sleep, editorText, seedDocument, ready } from './lib.mjs';
 
 /*
  * Opening a Markdown file (T32).
@@ -22,10 +22,7 @@ const DOCS_KEY = 'markbeam:docs';
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 const readIndex = (page) =>

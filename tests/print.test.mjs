@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * Print stylesheet (T12).
@@ -23,10 +23,7 @@ const LONG_DOCUMENT = [
 ].join('\n\n');
 
 const boot = async (page) => {
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(2000);
+  await ready(page);
 };
 
 /** Is the element actually rendered? `display:none` gives a null offsetParent and 0 boxes. */

@@ -1,4 +1,4 @@
-import { withPage, sleep, editorText } from './lib.mjs';
+import { withPage, sleep, editorText, ready } from './lib.mjs';
 
 /*
  * Multiple documents (T9).
@@ -20,10 +20,7 @@ const ACTIVE_KEY = 'markbeam:active_doc';
 
 const reload = async (page) => {
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1500);
+  await ready(page);
 };
 
 /** Wipes every markbeam key, so each phase starts from a known profile. */

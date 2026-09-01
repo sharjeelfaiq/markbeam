@@ -28,6 +28,46 @@ export async function withPage(fn, opts = {}) {
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /*
+ * Wait for a condition, and **fail with a name when it never comes** (T95).
+ *
+ * The unlabelled version of this cost a 36-minute run that printed nothing during T67: a wait
+ * armed for a control that had moved never settled, and a hang is far worse than a failed
+ * assertion because it takes the whole run with it. Every wait added by the sleep sweep goes
+ * through here for that reason.
+ */
+export const waitFor = async (page, predicate, label, timeout = 15000) => {
+  try {
+    await page.waitForFunction(predicate, { timeout, polling: 100 });
+    return true;
+  } catch (error) {
+    throw new Error(`timed out waiting for ${label} after ${timeout}ms`);
+  }
+};
+
+/*
+ * The app is up *and has rendered*, which is what the `sleep(2500)` scattered through these
+ * suites was actually waiting for: Monaco present, the welcome document converted into
+ * `#output`, and fonts settled so a measurement is not taken mid-swap.
+ *
+ * `CLAUDE.md` states the rule this replaces — wait on the state you are about to measure, never
+ * on a duration — and the sleeps were both slower and less reliable than following it.
+ */
+export const ready = async (page, timeout = 30000) => {
+  await waitFor(
+    page,
+    () => {
+      const editor = document.querySelector('#editor .monaco-editor');
+      const output = document.querySelector('#output');
+      return !!editor && !!output && output.textContent.trim().length > 0;
+    },
+    'the editor and a rendered preview',
+    timeout
+  );
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+};
+
+
+/*
  * Monaco renders spaces inside `.view-line` as non-breaking spaces, so raw textContent
  * never matches a plain-text needle. Normalising here is the difference between a check
  * that works and one that silently fails on text which is visibly present.

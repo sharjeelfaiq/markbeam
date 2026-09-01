@@ -1,4 +1,4 @@
-import { seedDocument, sleep, withPage } from './lib.mjs';
+import { seedDocument, sleep, withPage, ready } from './lib.mjs';
 
 /*
  * `==highlight==` syntax (T6, #89).
@@ -35,10 +35,7 @@ const DOC = [
 const seed = async (page, markdown) => {
   await seedDocument(page, markdown);
   await page.reload({ waitUntil: 'networkidle2' });
-  await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-    timeout: 30000
-  });
-  await sleep(1800);
+  await ready(page);
 };
 
 /** Marks that came from `==…==`, excluding the deliberately raw one. */

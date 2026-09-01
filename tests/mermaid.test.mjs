@@ -1,4 +1,4 @@
-import { seedDocument, withPage, sleep } from './lib.mjs';
+import { seedDocument, withPage, sleep, ready } from './lib.mjs';
 
 /*
  * Regression cover for the Mermaid error-container leak.
@@ -136,10 +136,7 @@ export const suite = {
 
       await seedDocument(page, '# No diagram here\n\nJust prose, no fences at all.', 'Plain');
       await page.reload({ waitUntil: 'networkidle2' });
-      await page.waitForFunction(() => !!document.querySelector('#editor .monaco-editor'), {
-        timeout: 30000
-      });
-      await sleep(2500);
+      await ready(page);
 
       const withoutDiagram = await mermaidRequests(page);
       const diagramsPresent = await page.$$eval('#output .mermaid', (els) => els.length);
@@ -154,7 +151,12 @@ export const suite = {
       // …and it must still load the moment a diagram appears, or this is a regression.
       await clearEditor(page);
       await type(page, '```mermaid\ngraph TD\n  A-->B\n');
-      await sleep(2000);
+      // Past the 150ms debounce and the lazy import: wait for the rendered svg, not a duration.
+      await page
+        .waitForFunction(() => document.querySelectorAll('#output .mermaid svg').length === 1, {
+          timeout: 20000
+        })
+        .catch(() => {});
 
       const afterDiagram = await mermaidRequests(page);
       const lateSvgs = await page.$$eval('#output .mermaid svg', (els) => els.length);

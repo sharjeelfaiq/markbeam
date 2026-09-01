@@ -169,7 +169,14 @@ const runCommand = async (page, needle) => {
   await page.keyboard.down('Control');
   await page.keyboard.press('KeyK');
   await page.keyboard.up('Control');
-  await sleep(400);
+  // The palette paints its items on open; wait for one to exist rather than for a duration.
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelectorAll('#palette .sheet__item, #palette-list .sheet__item').length > 0,
+      { timeout: 10000 }
+    )
+    .catch(() => {});
   const clicked = await page.evaluate((text) => {
     const item = [...document.querySelectorAll('#palette .sheet__item')].find((el) =>
       el.textContent.toLowerCase().includes(text.toLowerCase())
@@ -263,7 +270,6 @@ export const suite = {
         })
         .then(() => true)
         .catch(() => false);
-      await sleep(2000);
 
       checks.push({
         name: 'Monaco loads from the CDN under the policy',
@@ -283,7 +289,17 @@ export const suite = {
       await page.keyboard.press('KeyA');
       await page.keyboard.up('Control');
       await page.keyboard.type(DOC, { delay: 3 });
-      await sleep(4000);
+      // Three lazy paths at once — mermaid, KaTeX, the data: image. Wait for all three rather
+      // than for however long the slowest of them happened to take on one machine.
+      await page
+        .waitForFunction(
+          () =>
+            document.querySelectorAll('#output .mermaid svg').length >= 1 &&
+            document.querySelectorAll('#output .katex').length >= 1 &&
+            document.querySelectorAll('#output img[src^="data:"]').length >= 1,
+          { timeout: 30000 }
+        )
+        .catch(() => {});
 
       const rendered = await page.evaluate(() => ({
         mermaid: document.querySelectorAll('#output .mermaid svg').length,
@@ -382,7 +398,12 @@ export const suite = {
             timeout: 40000
           })
           .catch(() => {});
-        await sleep(2500);
+        await page
+          .waitForFunction(
+            () => (document.querySelector('#output')?.textContent || '').includes('Policy check'),
+            { timeout: 20000 }
+          )
+          .catch(() => {});
         shared = await page.evaluate(() =>
           (document.querySelector('#output')?.textContent || '').includes('Policy check')
         );
