@@ -32,7 +32,8 @@ local storage and stays there unless you connect a GitHub or GitLab repository y
   keeps a deleted document *and* its snapshots
 - **Every export** — PDF, print, standalone HTML, HTML to the clipboard with table borders
   intact, Word, Markdown, and a share link that carries the whole document in the URL
-  fragment rather than on a server
+  fragment rather than on a server. Six of them — PDF, slides as PDF, HTML file, clipboard
+  HTML, Word, Markdown — sit on one **Export** button rather than only in the palette
 - **Custom preview CSS** — scoped to the preview and carried into the HTML and Word exports.
   The PDF excludes it on purpose: that export rasterises the page, and CSS its renderer
   cannot parse yields a blank document rather than an error
@@ -84,6 +85,25 @@ Every file in `tests/` ending `.test.mjs` is a suite, registered in `tests/run.m
 filter is a substring of the suite's own `name`, so `npm test -- "auto sync" present` runs
 those two.
 
+Suites run **concurrently**, `min(4, cores - 1)` at a time, which took a full run from 1100s
+to 220s. Two things about that are worth knowing before changing it:
+
+- **`tooling` runs alone, first.** It writes a probe into `src/` and calls `refreshSources`,
+  so Vite's watcher hot-reloads every open page; anything running beside it is reloaded
+  mid-assertion. Anything else that writes to `src/` belongs in `EXCLUSIVE` too.
+- **Storage isolation is free, not arranged.** No suite passes `userDataDir`, so Puppeteer
+  gives each `launch()` a fresh temporary profile. Adding one would make suites share
+  `localStorage` with each other.
+
+Output is buffered per suite and printed as one block when it finishes, so a failure always
+names its suite. The summary ends with the wall clock and the five slowest suites.
+`MARKBEAM_CONCURRENCY=1` restores serial execution when a suite needs bisecting against
+parallelism.
+
+Waits are on state, never on a duration: `ready(page)` and `waitFor(page, predicate, label)`
+in `tests/lib.mjs`. A `sleep()` that survives has to say in a comment what it is waiting for
+and why that cannot be observed.
+
 Override `CHROME_PATH` or `MARKBEAM_URL` if your setup differs. There is no linter.
 
 ### The live sync checks
@@ -123,22 +143,29 @@ rather than shared state.
 
 ```
 src/
-  main.js       entry + wiring
-  theme.js      light/dark/system resolution
-  storage.js    persistence and legacy migrations
-  history.js    autosave snapshots; trash.js  deleted documents, seven days
-  share.js      document <-> URL fragment codec
-  images.js     paste/drop decode, resize to WebP, embed
-  customCss.js  user stylesheet, parsed and scoped to the preview
-  github.js     gitlab.js  remote clients; remoteAuth.js  the tokens
-  autoSync.js   when a bound document may be resent, and what a conflict does
-  editor/       Monaco setup and themes
-  markdown/     marked + DOMPurify + renderer overrides, incl. table.js
-  mermaid/      render, debounce, version guard
-  export/       PDF (pages and slides), HTML, Word, download
-  ui/           view modes, divider, status bar, toasts, palette, sheets,
-                present (the slide overlay)
-  styles/       tokens.css, app.css, preview.css
+  main.js            entry + wiring
+  defaultDocument.js the welcome text
+  theme.js           light/dark/system resolution + the print theme swap
+  storage.js         persistence and legacy migrations
+  history.js         autosave snapshots; trash.js  deleted documents, seven days
+  share.js           document <-> URL fragment codec
+  openFile.js        reading and validating a dropped or picked file
+  images.js          paste/drop decode, resize to WebP, embed
+  documentLimits.js  the 1 MiB ceiling images are measured against
+  customCss.js       user stylesheet, parsed and scoped to the preview
+  search.js          matching across every stored document
+  github.js          gitlab.js  remote clients; remoteAuth.js  the tokens
+  autoSync.js        when a bound document may be resent, and what a conflict does
+  install.js         when to offer to install the app, and when to stop asking
+  editor/            Monaco setup and themes
+  markdown/          marked + DOMPurify + renderer overrides, incl. table.js
+  mermaid/           render, debounce, version guard
+  export/            PDF (pages and slides), HTML, Word, download
+  ui/                viewmode, divider, statusbar, toasts, palette, documents,
+                     history, stamp, formatToolbar, outline, search, remote, gist,
+                     style, exportMenu, position, present (the slide overlay),
+                     install (the offer banner)
+  styles/            tokens.css, app.css, preview.css
 ```
 
 Every colour, space, radius and duration is a design token in `src/styles/tokens.css`; the

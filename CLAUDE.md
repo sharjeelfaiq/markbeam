@@ -96,6 +96,7 @@ src/
   documentLimits.js  the 1 MiB per-document ceiling images are measured against
   trash.js           deleted documents and their history, kept for seven days
   customCss.js       user stylesheet, parsed and scoped to the preview
+  search.js          matching across every stored document — no DOM, no editor
   github.js          Contents API client — list, read, write, Gists. No DOM, no storage.
   gitlab.js          the same three calls against GitLab's Repository Files API
   remoteAuth.js      where the remote tokens live, and for how long — one slot per provider
@@ -107,7 +108,8 @@ src/
   mermaid/           lazy load, render, 150ms debounce, version guard, print copies
   export/            pdf.js (banding, and slides), html.js, document.js (Word), download.js
   ui/                viewmode, divider, statusbar, toasts, palette, documents,
-                     history, stamp, formatToolbar, outline, remote, gist, style,
+                     history, stamp, formatToolbar, outline, search, remote, gist,
+                     style, exportMenu, position (the shared anchor clamp),
                      present (the slide overlay), install (the offer banner)
   styles/            tokens.css, app.css, preview.css (imported by main.js)
 tests/               browser suites + run.mjs

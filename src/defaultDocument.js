@@ -42,8 +42,9 @@ browser — no account, no upload, nothing to sign up for.
 | Search every document | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> |
 | Export a PDF | <kbd>Ctrl</kbd>+<kbd>S</kbd> |
 
-Prefer clicking? The toolbar above the editor does all of the formatting, and the
-palette is one button along the top right.
+Prefer clicking? The toolbar above the editor does all of the formatting. Along the top
+right there are three buttons: **Copy** for the Markdown source, **Export** for every
+format Markbeam can produce, and the one that opens the palette.
 
 ## What you can write
 
@@ -99,7 +100,8 @@ it rewrites what you typed.
 
 ## Your documents
 
-- **Several at once** — the menu beside the title, and folders to group them
+- **Several at once** — the menu beside the title, and folders to group them. That menu also
+  renames the open document, moves it to a folder, empties it, or deletes it
 - **History** — versions are snapshotted as you pause; restore any of them
 - **Trash** — a deleted document keeps its history and comes back for seven days, and the
   toast that announces the deletion offers **Undo** on the spot
@@ -109,6 +111,10 @@ it rewrites what you typed.
 - **Open a file** — drop a \`.md\` file anywhere on the window, or pick one from the palette
 
 ## Getting it out again
+
+The **Export** button holds six of these — PDF, slides as PDF, an HTML file, rendered HTML
+on the clipboard, Word and Markdown — so none of them is hidden behind a shortcut. Printing
+and share links are in the palette.
 
 - **PDF** — page breaks fall between blocks, so a heading, table row or diagram is never
   sliced in half
@@ -140,15 +146,24 @@ it rewrites what you typed.
 
 ## Everything else
 
+- **Status bar** — words, characters, reading time and where the cursor is, and a dot that
+  says when the document was last saved. It saves on every keystroke, so that dot is
+  reassurance rather than a button
 - **Themes** — light, dark, or whatever your system is set to, resolved before the page
   paints so a reload never flashes the wrong one
 - **Offline** — after the first visit it works with no connection. *Install Markbeam* in the
   palette gives it its own window, on a desktop or a phone home screen
+- **On a phone** — below about 900 pixels the two panes become tabs, so you switch between
+  writing and reading instead of splitting a narrow screen
 - **Nothing is uploaded** — no account, no tracking, no font CDN. Outbound requests are the
   ones a repository you connected makes, plus anonymous page-speed timings that say nothing
   about you or this document
+- **Open source** — AGPL-3.0. The *Source* link in the status bar goes to the code, and it
+  is there because the licence requires anyone running a modified Markbeam as a service to
+  offer their users the same thing
 
-Everything above is in the command palette. Clear this text and start writing.
+Everything above is in the command palette. When you are ready, *Clear document* empties
+this one — or *Reset to welcome document* brings this text back if you want it again.
 
 [^1]: Like this one — click the arrow to jump back up.
 `;

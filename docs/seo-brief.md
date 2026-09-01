@@ -64,9 +64,11 @@ pretend code changes substitute for that.
   codebase. If you raise them, be clear they are the owner's work: Show HN, Product Hunt,
   `awesome-*` lists, or a write-up of the genuinely interesting engineering here — the PDF
   banding around the browser's ~16384px canvas limit, or the Mermaid print pre-render.
-- **Indexation, which has not happened yet.** `site:markbeam.app` returned nothing on
-  2026-08-31. Search Console has to be verified for the new property, `sitemap.xml` submitted
-  there, and Bing Webmaster Tools is worth the ten minutes — it indexes new domains faster.
+- **Indexation, which is under way rather than done.** `site:markbeam.app` returned nothing on
+  2026-08-31. The Search Console property was verified and `sitemap.xml` submitted on
+  2026-09-01; indexing follows on Google's schedule, not ours, so re-run the `site:` query
+  before assuming either way. Bing Webmaster Tools is still worth the ten minutes — it indexes
+  new domains faster — and is not done.
 - **Content depth.** Six pages as of T61: the app, `/about`, and four topic pages aimed at
   specific intents (`/markdown-viewer`, `/markdown-to-pdf`, `/mermaid-diagrams`,
   `/markdown-slides`). More is fine *if* it is real content someone would read; a page that

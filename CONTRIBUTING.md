@@ -47,7 +47,10 @@ npm run dev          # in one terminal
 npm test             # in another — every suite must pass
 ```
 
-`npm test` drives real Chrome against the running dev server. There is no linter.
+`npm test` drives real Chrome against the running dev server, running suites four at a time.
+There is no linter. If a suite passes alone but fails alongside others, that is a real
+isolation bug — fix it, or mark it exclusive in `tests/run.mjs`; do not quietly serialise the
+runner back. `MARKBEAM_CONCURRENCY=1` is for bisecting, not for shipping.
 
 **Write the failing test first, and watch it fail.** A test that passes before *and* after your
 change proves nothing, and this repo has been caught by exactly that: a Mermaid test used a 45ms
@@ -61,6 +64,12 @@ Two more house rules worth stating, because breaking them is silent:
   `data-theme="light"` on a cloned DOM, and an override defeats it.
 - **Never edit source while a browser test is running.** Vite hot-reloads mid-run and gives you
   results that look real and are not.
+- **Wait for state, never for a duration.** Use `ready(page)` and
+  `waitFor(page, predicate, label)` from `tests/lib.mjs`; a bare `sleep()` is both slower and
+  less reliable than the thing it stands in for. An unlabelled wait that never settles costs a
+  run that hangs and prints nothing, which has happened here. If a `sleep()` genuinely has to
+  stay — a debounce, a fuse — say in a comment what it waits for and why that is not
+  observable.
 
 ## What gets merged
 

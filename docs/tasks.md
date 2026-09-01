@@ -479,6 +479,86 @@ free and the entry should be revisited.
 
 ## Completed
 
+### [x] T96 · The product moved again and the words describing it did not — 2026-09-01
+
+**Root cause:** the same failure T57 fixed, recurring for the same reason. Eleven tasks shipped
+after it (T58–T95) and the user-facing text stayed where it was. This is not carelessness so
+much as structural: no suite can fail because a feature went undescribed, so nothing catches it
+except somebody re-reading every surface.
+
+**What the welcome document — the only thing a first-time visitor reads — had stopped saying:**
+
+- **The Export button and its six formats (T66).** The document still implied every export
+  lived in the palette, which is precisely the state T66 existed to end. A tour that hides the
+  feature the tour is for.
+- **The three toolbar buttons.** It said "the palette is one button along the top right" when
+  there are now three — Copy, Export, and the palette.
+- **The documents menu's rename, move to folder, clear and delete (T67).** *Clear* moved there
+  from the toolbar and the document never followed it.
+- **The status bar** — words, characters, reading time, cursor position, save state — never
+  mentioned at all.
+- **Phone behaviour**, which `/about` described and the app's own text did not.
+- **That Markbeam is AGPL-3.0.** T57 restored the *Source* link in the status bar; nothing in
+  the app ever said why it is there. §13 is the reason the licence was chosen, and the link is
+  how the obligation is met — worth one line in the document everybody reads.
+
+**Elsewhere:** `README.md`'s Tests section predated the parallel runner entirely (T94/T95) and
+its architecture tree was missing `search.js`, `ui/exportMenu.js` and `ui/position.js` — as was
+`CLAUDE.md`'s. `CONTRIBUTING.md` listed the house rules that are silent when broken but not the
+two newest. `public/about.html` never said the project is open source. `markdown-to-pdf.html`
+and `markdown-slides.html` still told people to reach exports through <kbd>Ctrl</kbd>+<kbd>K</kbd>.
+`docs/seo-brief.md` still listed Search Console as unverified and the sitemap as unsubmitted;
+both were done on 2026-09-01.
+
+**One overclaim, caught before it shipped, and it is the reason this entry is worth reading.**
+The first pass wrote "every format is under the Export button" into three files at once. It is
+false: `src/main.js:1987` defines exactly six items — PDF, Slides as PDF, HTML file, Copy
+rendered HTML, Word (.doc), Markdown — while **Print and share links are palette-only**. A
+sentence that sounds like a simplification is a claim, and a claim in the welcome document is
+the one a new user checks first. Fixed in all three by reading the code rather than the prose.
+
+**Verified mechanically where possible**, because prose has no test: the welcome document's four
+enforced invariants still hold (contains "Welcome to Markbeam", exactly one Mermaid fence, no
+`$…$` pair anywhere, no `---`); the ~900px breakpoint claim matches `src/styles/app.css:1254`;
+`min(4, cores - 1)` matches `tests/run.mjs:122`; `ready` and `waitFor` exist in `tests/lib.mjs`;
+the attribution guard in `CLAUDE.md` stays empty; and no served surface names the old host.
+Rendered: 1,294 words, 8 sections, 8 working `[TOC]` links, one diagram.
+
+### Verify vs reference — T96
+
+*On the reference* — https://markdownlivepreview.com has no welcome document, no feature tour
+and no about page; it opens on a lorem-ipsum sample. There is nothing to compare, and the
+absence is the point: the whole reason Markbeam needs this document is that it has features a
+visitor cannot guess at.
+
+*On ours* — http://localhost:5173, palette → *Reset to welcome document*:
+
+1. The tour names the **Export** button and says it holds six formats. Click Export and count:
+   PDF, Slides as PDF, HTML file, Copy rendered HTML, Word (.doc), Markdown. Six, and the two it
+   says are elsewhere — printing and share links — are in the palette, not the menu.
+2. The menu beside the document title offers New, Open a file…, Rename current, Move to folder…,
+   Clear current, Delete current — all six the document now claims.
+3. The status bar reads `N words · N characters · N min read`, a cursor position, a save dot, and
+   an **About** and a **Source** link. The document describes each.
+4. Narrow the window below 900px: the panes become tabs.
+
+A tilde fence below, and single quotes around the script, both on purpose: the command
+contains a triple backtick and a `$`, so a backtick fence would end early and a double-quoted
+shell string would expand the regex.
+
+~~~
+node -e 'import("./src/defaultDocument.js").then(({DEFAULT_DOCUMENT: d}) => console.log({
+  mermaidFences: d.split("```mermaid").length - 1,
+  mathPair: /[$][^$\n]+[$]/.test(d),
+  hrLine: /^---\s*$/m.test(d)
+}))'
+~~~
+
+must print `{ mermaidFences: 1, mathPair: false, hrLine: false }`. The maths one is the
+non-obvious constraint: `hasMath()` in `src/markdown/math.js` reads the raw source and knows
+nothing about code spans, so even ``$x^2$`` inside backticks would pull the KaTeX chunk and
+break the "does not fetch things you have never used" promise on `/about`.
+
 ### [x] T94 · The suite took eighteen minutes because it ran one browser at a time — 2026-09-01
 
 **Root cause:** `tests/run.mjs:106` was a plain `for` loop. Forty-one suites, 68 browser
