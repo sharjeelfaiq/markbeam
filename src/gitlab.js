@@ -53,8 +53,22 @@ let describeFailure = (status, payload) => {
   if (status === 401) {
     return 'GitLab rejected that token — check it has not expired';
   }
+  /*
+   * **A 403 must carry GitLab's own explanation.** Guessing here actively misleads, and T63
+   * proved it: the original wording blamed the scope, and the truth — reported plainly by the
+   * API and discarded by this function — was `You are not allowed to push into this branch`,
+   * because GitLab protects the default branch and permits only Maintainers to push to it.
+   *
+   * At least three different situations produce a 403 (scope, project role, protected branch)
+   * and they need three different fixes, so a fixed sentence is wrong at least two-thirds of
+   * the time. GitLab's text is safe to show — it is composed by the API from the request, and
+   * `request()` never puts the credential anywhere but the Authorization header.
+   */
   if (status === 403) {
-    return 'That token is not permitted to do this — it needs api or write_repository scope';
+    const reason = detail.replace(/^403\s+Forbidden\s*-\s*/i, '').trim();
+    return reason
+      ? `GitLab refused that — ${reason}`
+      : 'That token is not permitted to do this — it needs the api scope and a role that may write';
   }
   if (status === 404) {
     return 'Project not found, or the token cannot see it';

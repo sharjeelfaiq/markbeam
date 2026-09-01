@@ -239,11 +239,18 @@ so `tests/live/github.mjs` exists to settle the parts only GitHub can: that `wri
 omit `sha` when creating and send it when replacing, and that a refused token comes back as a
 401 whose message names no credential.
 
-**It is not part of `npm test` and CI never runs it.** It needs a credential and writes to a
+`tests/live/gitlab.mjs` is the same thing for GitLab, and its shape is the riskier of the two:
+`writeFile()` sends **PUT first and falls back to POST** on 400 or 404, so creating a file
+succeeds only through the fallback. It also asks GitLab for the project's `default_branch`
+before anything else, because `src/gitlab.js` hardcodes `main` — a project defaulting to
+`master` fails every call with a 404 that reads as a missing file.
+
+**Neither is part of `npm test`, and CI never runs them.** They need a credential and write to a
 real repository; a suite that no-ops when an environment variable is missing would report
-success for a run that never happened. Run it by hand with `MARKBEAM_GH_TOKEN` and
-`MARKBEAM_GH_REPO` set — README says how. GitLab has no equivalent yet and remains
-fixture-only.
+success for a run that never happened. Both share `tests/live/env.mjs` for `.env` loading and
+reporting, and both can be run credential-free to watch them fail honestly — no variables set
+exits 2, an invalid token produces a real 401 from the live API. README says how to run them
+properly.
 
 Sync is **manual by default**, and automatic only when the user switches it on (T49). The
 claim on `/about` stays checkable in the network panel, which is the point, because the timer

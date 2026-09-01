@@ -49,8 +49,9 @@ local storage and stays there unless you connect a GitHub or GitLab repository y
 - **Conflicts are never merged** — if the remote moved since you last wrote it, both versions
   are kept as separate documents and you pick. Nothing is overwritten
 - **No third-party requests unless you ask for one.** Fonts are self-hosted, there is no
-  analytics tag or cookie, and no page the app serves carries an external image, badge or
-  link — the status bar links only to `/about`, on this origin. Page-speed measurements
+  analytics tag or cookie, and no page carries an external image or badge — the status bar's
+  repository link is an inline SVG that fetches nothing until you click it. Page-speed
+  measurements
   (Web Vitals, no visitor identity, nothing about your document) are collected on this domain
   in production only. The only outbound calls are the ones repository sync makes,
   after you connect a repository — on demand, or on a pause in typing if you switched
@@ -85,25 +86,33 @@ those two.
 
 Override `CHROME_PATH` or `MARKBEAM_URL` if your setup differs. There is no linter.
 
-### The live GitHub check
+### The live sync checks
 
-`tests/live/github.mjs` runs the sync client against the **real** API, because every check in
-`tests/github.test.mjs` is served from a fixture and a fixture agrees with whatever the client
-sends. It is not part of `npm test`: it needs a credential and it writes to a real repository,
-and a suite that quietly no-ops without one would report success for a run that never happened.
+`tests/live/github.mjs` and `tests/live/gitlab.mjs` run the sync clients against the **real**
+APIs, because every check in `tests/github.test.mjs` and `tests/gitlab.test.mjs` is served from
+a fixture and a fixture agrees with whatever the client sends. Neither is part of `npm test`:
+they need a credential and they write to a real repository, and a suite that quietly no-ops
+without one would report success for a run that never happened.
 
 ```
 cp .env.example .env     # then put a real token in it — .env is gitignored
 node tests/live/github.mjs
+node tests/live/gitlab.mjs
 ```
 
-`MARKBEAM_GH_TOKEN` and `MARKBEAM_GH_REPO` can equally be real environment variables, which
-win over `.env` so a stale file cannot silently override a one-off run. The token wants
-**Contents: read and write on a single scratch repository** and nothing else.
+The four variables can equally be real environment variables, which win over `.env` so a stale
+file cannot silently override a one-off run. GitHub wants a fine-grained token with
+**Contents: read and write on a single scratch repository**; GitLab wants `api` scope, and a
+**project** access token if your plan has them — a personal one is account-wide.
 
-It creates a file, updates it, lists it, reads it back, checks a rejected token is refused with
-a 401 whose message names no credential, then deletes what it made. The output carries statuses
-and shas, never the token.
+Each creates a file, updates it, lists it, reads it back, checks a rejected token is refused
+with a 401 whose message names no credential, then deletes what it made. The GitLab one also
+reports the project's `default_branch` first, because the client hardcodes `main` and a project
+defaulting to `master` fails everything afterwards with a 404 that looks like a missing file.
+
+The output carries statuses, shas and commit ids, never the token. Both can be run without any
+credential to see them fail honestly: with none set they exit 2 saying nothing ran, and with an
+invalid token they report a real 401 from the live API.
 
 ## Architecture
 

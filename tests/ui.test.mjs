@@ -455,13 +455,17 @@ export const suite = {
       });
 
       /*
-       * ---- the status bar leaves this origin nowhere ----
+       * ---- the status bar's two links, and the request it must not make ----
        *
-       * A repository link with an inline GitHub icon used to live here, and this check used
-       * to assert it. It is asserted absent rather than deleted: the property the old check
-       * was really defending — the status bar makes no third-party request and offers no
-       * off-origin destination — still matters, and a deleted check defends nothing. The
-       * About link stays and is covered by `tests/seo.test.mjs`.
+       * The repository link was removed in T57 and asked back afterwards, so this check has
+       * now been written twice from opposite directions. What survived both is the property
+       * underneath: **the status bar makes no third-party request**. A link is a destination a
+       * visitor chooses; an `<img>` badge from shields.io would be a fetch on every page load,
+       * which is what was actually being defended and is what stays asserted here.
+       *
+       * `rel="noopener"` matters on a `target="_blank"` link: without it the opened page gets a
+       * handle on this window through `opener`, and this origin renders attacker-controlled
+       * Markdown from share links.
        */
       await page.setViewport({ width: 1400, height: 900 });
       await sleep(500);
@@ -471,32 +475,30 @@ export const suite = {
           return null;
         }
         const anchors = [...footer.querySelectorAll('a')];
+        const source = document.querySelector('#source-link');
+        const rect = source?.getBoundingClientRect();
         return {
-          sourceLink: !!document.querySelector('#source-link'),
-          // Anything resolving off this origin, however it is written.
-          external: anchors
-            .map((a) => a.href)
-            .filter((href) => {
-              try {
-                return new URL(href, location.href).origin !== location.origin;
-              } catch (error) {
-                return false;
-              }
-            }),
+          href: source?.getAttribute('href') || null,
+          rel: source?.getAttribute('rel') || '',
+          visible: !!rect && rect.width > 0 && rect.height > 0,
+          inlineSvg: !!source?.querySelector('svg'),
+          // An external badge image would be a request on every load — the thing being defended.
           images: footer.querySelectorAll('img').length,
           about: anchors.filter((a) => /about/i.test(a.getAttribute('href') || '')).length
         };
       });
       checks.push({
-        name: 'the status bar links nowhere off this origin',
+        name: 'the status bar links to the repository and to /about, and fetches nothing',
         pass:
           !!statusbar &&
-          statusbar.sourceLink === false &&
-          statusbar.external.length === 0 &&
+          statusbar.href === 'https://github.com/sharjeelfaiq/markbeam' &&
+          statusbar.visible === true &&
+          statusbar.inlineSvg === true &&
+          statusbar.rel.includes('noopener') &&
           statusbar.images === 0 &&
           statusbar.about === 1,
         detail: statusbar
-          ? `#source-link=${statusbar.sourceLink}, external=${JSON.stringify(statusbar.external)}, about=${statusbar.about}`
+          ? `${statusbar.href} (rel="${statusbar.rel}"), inline svg=${statusbar.inlineSvg}, img=${statusbar.images}, about=${statusbar.about}`
           : 'no status bar'
       });
 

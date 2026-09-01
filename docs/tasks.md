@@ -12,7 +12,32 @@ records how to check it against the reference site, marks it done, commits and p
 
 ## P0 — Bugs
 
-*Empty — T54 and T56 are done. New bugs go here, above P1.*
+### [ ] T64 · Scrolling the editor on a phone opens the keyboard
+
+**Reported:** 2026-09-01, on a real phone. Dragging to scroll **over the source pane** raises the
+on-screen keyboard every time. Not on load — a fresh visit is quiet until the first drag — so
+`setValue()`'s `editor.focus()` (`src/main.js:257`) is not involved.
+
+**Why it is P0 rather than a polish item:** the keyboard covers roughly half a small screen, so
+every attempt to read a document on a phone ends with the document half-hidden and a dismissal
+to perform. It makes the reading case — which is most of the mobile traffic a Markdown viewer
+gets — actively unpleasant, and `/markdown-viewer` now advertises exactly that use.
+
+**Where it comes from.** None of the eight `editor.focus()` calls in `src/main.js` fire on a
+scroll; they all follow an explicit action. Monaco focuses its own hidden `textarea.inputarea`
+when a touch lands in the editor, and a drag begins with a touch — so a scroll is
+indistinguishable from a tap as far as it is concerned. The fix has to separate the two:
+movement past a small threshold is a scroll and must not leave focus behind.
+
+**Watch out for** `tests/ui.test.mjs`, which asserts that clicking the editor *does* focus Monaco
+(`textarea.inputarea` becomes `activeElement`) — a fix that simply suppresses focus on touch
+would break real tapping, and that check is what would catch it.
+
+**Done when:** on a touch device, dragging over the source pane scrolls without raising the
+keyboard, a genuine tap still focuses the editor and raises it, and a regression test drives
+synthetic touch events (`touchstart` → `touchmove` → `touchend`) under CDP touch emulation to
+prove both halves — with the drag case failing against the current code first.
+
 
 ---
 
@@ -35,35 +60,6 @@ records how to check it against the reference site, marks it done, commits and p
 ---
 
 ## P3 — Housekeeping
-
-### [ ] T63 · GitLab sync has never met the real API either
-
-**Why:** T52 closed this gap for GitHub and found the client correct. GitLab is still covered
-only by intercepted fixtures in `tests/gitlab.test.mjs`, and a fixture agrees with whatever the
-client sends. Its shape is the riskier of the two — GitHub's write path is one verb with a
-conditional field; GitLab's is two verbs and a status-code branch.
-
-**What a fixture cannot vouch for**, each named because each fails in a different direction:
-
-- **`writeFile()` sends `PUT`, then retries as `POST` on 400 or 404** (`src/gitlab.js:144`).
-  GitLab splits create and update, and answers a POST onto an existing file with **400** rather
-  than 404 — which is why PUT goes first. If that status is wrong, creating a new file fails
-  while updating works, or the reverse, and only against the real API does it show.
-- **The branch is hardcoded to `main`** (`src/gitlab.js:16`). A project defaulting to `master`
-  would fail every read and write, and nothing asks GitLab what its default actually is.
-- **`readFile()` reports `last_commit_id` as `id`** (`src/gitlab.js:136`) — the value auto-sync
-  compares to decide whether the remote moved. Wrong, and conflict detection either never fires
-  or fires constantly.
-- **The project route is a URL-encoded path** (`:32`) and `listMarkdown` pages the tree at
-  `per_page=100` (`:96`). Encoding and pagination are where a generous fixture and a strict API
-  disagree.
-
-**Done when:** `tests/live/gitlab.mjs` exists in the shape `tests/live/github.mjs` already
-proved — `.env` or environment variables, never a token in the output, cleans up what it
-creates, outside `npm test` so it cannot report a run that never happened — and one pass against
-a scratch project confirms create, update, list, open and the rejected-token path. The result is
-recorded here **including anything the fixtures had wrong**, which is the part T52 could only
-report as "nothing".
 
 ### [ ] T53 · Two export paths no suite can reach
 
@@ -130,6 +126,79 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T63 · GitLab sync had never met the real API either — 2026-09-01
+
+**Why:** T52 closed this gap for GitHub and found the client correct. GitLab stayed fixture-only
+and had the riskier shape — two verbs and a status-code branch against GitHub's one verb with a
+conditional field.
+
+**The write path holds.** `writeFile()` sends `PUT` first and falls back to `POST` on 400 or 404
+(`src/gitlab.js:144`), so creating a file succeeds only through the fallback. Against the real
+API: `create ... accepted`, `update ... accepted`, and `last_commit_id` moved
+`69ba63b2 -> 902b038b` between them. The default branch was read and confirmed as `main`, which
+the client hardcodes.
+
+**Unlike T52, this run found real defects — two, both in one sentence of error text.**
+
+`describeFailure()` answered every 403 with an invented explanation: *"it needs api or
+write_repository scope"*. Three different conditions produce a 403 here and they need three
+different fixes:
+
+1. a token with the wrong **scope**,
+2. a token whose project **role** is too low — and GitLab fixes the role at token creation, so
+   the remedy is revoke-and-replace, not an edit,
+3. a **protected branch** — GitLab protects the default branch and permits only Maintainers to
+   push, which is the default state of a fresh project.
+
+The fixed sentence was wrong in two of the three, and the API had been reporting the truth all
+along: `403 Forbidden - You are not allowed to push into this branch`. The client discarded it.
+It now defers to GitLab's own text, and `.env.example` documents the role trap. Worth recording
+plainly: **this cost three wrong diagnoses during the run itself**, made by someone reading the
+app's own message — which is exactly what it would cost a user.
+
+**Why the fixtures could never have caught it.** A fixture returns the status and body the test
+author chose. Nobody writing one thinks to model "correct scope, correct role, protected
+branch", because that combination only exists in a real project with GitLab's own defaults.
+
+**Measured:** `PASS gitlab live — 11/11` against a scratch project: default branch `main`,
+create via the POST fallback, read-back at 62 chars, update via PUT, `id` moved, `id` sourced
+from `last_commit_id`, list found it among 2 markdown files, a rejected token refused with 401
+on read, list and write with a message naming no credential, the created file deleted (HTTP
+204), and nothing in the output containing the token. Build clean, full suite green either side —
+the harness lives outside `npm test`.
+
+**Shared with T52:** `tests/live/env.mjs` now holds the `.env` loader and the reporting shape for
+both harnesses. The refactor was verified without a credential, since the GitHub token was
+already revoked: with the placeholder `.env` in place the GitHub harness still reads the file and
+fails on a real 401, which it could not do if loading had broken.
+
+### Verify vs reference — T63
+
+*On the reference* — https://markdownlivepreview.com has no sync, so there is no client to prove.
+This is a check on our own claim.
+
+*On ours* — no user-visible change to the app **except one**: a 403 from GitLab now says what
+GitLab said. The old message actively misdirected, so this is worth seeing:
+
+```
+cp .env.example .env       # project access token, `api` scope, Developer role
+node tests/live/gitlab.mjs # expect: PASS gitlab live — 11/11
+```
+
+To reproduce the defect that was fixed, protect the branch again — Settings → Repository →
+Protected branches → `main` → *Allowed to push: Maintainers* — and re-run. The write checks fail
+with **"GitLab refused that — You are not allowed to push into this branch"**, which names the
+setting to change. Before this task the same run said *"it needs api or write_repository
+scope"*, and the scope was already correct.
+
+Credential-free, and worth doing because both are honest failures rather than skips:
+
+```
+node tests/live/gitlab.mjs                                   # exit 2, "This is not a pass."
+MARKBEAM_GL_TOKEN=invalid MARKBEAM_GL_PROJECT=gitlab-org/gitlab node tests/live/gitlab.mjs
+# 401s from the live API; the rejected-token checks pass, everything needing access fails
+```
 
 ### [x] T52 · GitHub sync had never met the real API — 2026-09-01
 
@@ -527,7 +596,10 @@ assertions, all of which T27–T29 had made false. A brief handed to an agent as
 that produces work against a site that no longer exists; it is rewritten to what is served
 today, with the custom domain named as the one genuinely open item.
 
-**The repository link is gone from both footers** — the status bar and `/about`. The
+**The repository link is gone from both footers** — the status bar and `/about`. *(Reversed on
+2026-09-01 at the owner's request: the link is back in both, and `tests/ui.test.mjs` asserts it
+again. What survived both directions is the property underneath — the status bar still makes no
+third-party request, so an inline SVG is fine where a shields.io badge would not be.)* The
 `tests/ui.test.mjs` check that asserted it is **replaced rather than deleted**: it now asserts
 the status bar contains no `#source-link`, no off-origin anchor and no `<img>` at all. The
 property that check was defending — the shell makes no third-party request and offers no

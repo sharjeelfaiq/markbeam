@@ -26,42 +26,8 @@
  * interpolates it, and the whole log is scanned for it before this exits.
  */
 
-import { readFileSync } from 'node:fs';
 import { listMarkdown, parseRepo, readFile, writeFile } from '../../src/github.js';
-
-/** Shas are long and only the first characters are useful; absent is worth saying out loud. */
-const short = (value) => (value ? String(value).slice(0, 8) : 'absent');
-
-/*
- * `.env` is read here rather than exported by hand, because a token typed into a shell lands in
- * that shell's history and stays there. `.env` is gitignored (line 68) and is the one place in
- * this repo a credential may sit.
- *
- * Parsed rather than `dotenv`: fifteen lines against a dependency the app does not otherwise
- * need, in a repo that pins what it loads and why. A real environment variable **wins** over
- * the file, so CI or a one-off `MARKBEAM_GH_TOKEN=… node …` is never silently overridden by a
- * stale `.env`.
- */
-const loadDotEnv = () => {
-  let body;
-  try {
-    body = readFileSync(new URL('../../.env', import.meta.url), 'utf8');
-  } catch (error) {
-    return; // no .env is perfectly normal
-  }
-
-  for (const line of body.split(/\r?\n/)) {
-    const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/i.exec(line);
-    if (!match || line.trim().startsWith('#')) {
-      continue;
-    }
-    const [, key, raw] = match;
-    if (process.env[key]) {
-      continue;
-    }
-    process.env[key] = raw.trim().replace(/^(['"])(.*)\1$/, '$2');
-  }
-};
+import { createReport, loadDotEnv, short } from './env.mjs';
 
 loadDotEnv();
 
@@ -74,17 +40,7 @@ const REPO = process.env.MARKBEAM_GH_REPO || '';
  */
 const BAD_TOKEN = 'not-a-real-token-t52';
 
-const log = [];
-const say = (line) => {
-  log.push(line);
-  process.stdout.write(`${line}\n`);
-};
-
-const checks = [];
-const check = (name, pass, detail) => {
-  checks.push({ name, pass, detail });
-  say(`  ${pass ? '✓' : '✗'} ${name}${detail ? `  — ${detail}` : ''}`);
-};
+const { say, check, finish } = createReport();
 
 if (!TOKEN || !REPO) {
   say('');
@@ -238,16 +194,4 @@ check(
   `${deleted.detail}${deleted.ok ? '' : ` — delete ${path} by hand`}`
 );
 
-// ---------- the token never reached the output ----------
-
-const leaked = TOKEN.length > 8 && log.join('\n').includes(TOKEN);
-check('nothing in this output contains the token', leaked === false, leaked ? 'LEAKED' : 'clean');
-
-const failed = checks.filter((entry) => !entry.pass);
-say('');
-say('────────────────────────────────────────────────');
-say(failed.length ? `FAIL  github live — ${failed.length}/${checks.length} failed` : `PASS  github live — ${checks.length}/${checks.length}`);
-say('────────────────────────────────────────────────');
-say('');
-
-process.exit(failed.length ? 1 : 0);
+finish('github live', TOKEN);
