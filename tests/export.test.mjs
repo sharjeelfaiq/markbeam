@@ -175,6 +175,49 @@ export const suite = {
         detail: word ? `type "${word.type}", name "${word.name}"` : 'nothing downloaded'
       });
 
+      /*
+       * ---- the Word file has to be readable by Word (T69) ----
+       *
+       * The `.doc` embeds the app's live stylesheets, and those are token-driven — `var(--…)`
+       * appears 92 times in `preview.css`, including the table border and the header shading,
+       * plus one `color-mix()`. **Word's HTML engine resolves neither**, and a declaration it
+       * cannot parse is dropped whole, so an unresolved file opens with no borders and no
+       * shading while looking perfectly fine in a browser.
+       */
+      const wordText = (word && word.text) || '';
+
+      checks.push({
+        name: 'the Word file carries no CSS custom properties or color-mix()',
+        pass: wordText.length > 0 && !wordText.includes('var(--') && !wordText.includes('color-mix('),
+        detail: wordText
+          ? `var(--) x${(wordText.match(/var\(--/g) || []).length}, color-mix x${(wordText.match(/color-mix\(/g) || []).length}`
+          : 'nothing downloaded'
+      });
+
+      /*
+       * Resolved to *something real*. Substituting an empty string would satisfy the check
+       * above while producing precisely the borderless table this task exists to prevent.
+       */
+      const wordTableColour = /(?:th|td)[^{}]*\{[^{}]*border[^{}]*(?:rgb|#[0-9a-f]{3})/i.test(wordText);
+      checks.push({
+        name: 'and its table borders resolved to a real colour',
+        pass: wordTableColour,
+        detail: wordTableColour
+          ? 'table border carries a concrete colour'
+          : 'no th/td border rule with an rgb() or hex value'
+      });
+
+      /*
+       * Control. The standalone HTML file is opened in a browser, which resolves custom
+       * properties perfectly well, so that path is deliberately left alone — without this,
+       * a change that flattened every export would be indistinguishable from the intended one.
+       */
+      checks.push({
+        name: 'the HTML file still uses the tokens, because a browser can read them',
+        pass: htmlText.includes('var(--'),
+        detail: `var(--) x${(htmlText.match(/var\(--/g) || []).length} in the HTML export`
+      });
+
       // ---------- filenames follow the title ----------
       const names = {
         md: md && md.name,

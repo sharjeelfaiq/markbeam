@@ -419,6 +419,27 @@ renderer has already resolved which, so its output is the only split that agrees
 preview. `tests/present.test.mjs` puts a `---` inside a fenced block for exactly that reason:
 it is the check the obvious implementation fails.
 
+#### The Word file is read by an engine that resolves neither tokens nor color-mix()
+
+`buildWordDocument()` runs `collectStyles()` through `resolveTokens()`; `buildStandaloneHtml()`
+does not. **That asymmetry is deliberate.** The HTML file is opened in a browser, which resolves
+`var(--…)` perfectly well, so it keeps the tokens and stays honest to the preview. Word drops
+whole declarations it cannot parse, and `preview.css` puts `var(--line-strong)` in the table
+border — so the `.doc` opened with no borders and no header shading while looking perfect
+everywhere else (T69).
+
+Two traps live in that resolver, both of which produced a plausible-looking wrong answer first:
+
+- **The light ramp cannot be read off a probe element.** It is declared under
+  `:root[data-theme='light']`, and `:root` matches only `<html>` — a detached
+  `<div data-theme="light">` inherits the *live* theme, so an export from dark mode bakes dark
+  colours into a file destined for white paper. Tokens are read from the CSSOM instead.
+- **The CSSOM re-serialises selectors.** `[data-theme='light']` comes back as
+  `[data-theme="light"]`, so matching `selectorText` by string equality silently caught only the
+  base `:root` rule — resolving spacing and typography while leaving every colour behind.
+  `tests/export.test.mjs` asserts both the absence of `var(--` and the presence of a real
+  colour on the table border, because absence alone passes against an empty substitution.
+
 #### The preview stylesheet is re-parsed by the exporter
 
 **`src/styles/preview.css` is parsed twice: once by the browser, once by the PDF

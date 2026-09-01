@@ -15,11 +15,480 @@ records how to check it against the reference site, marks it done, commits and p
 ### [ ] T53 · Two export paths no suite can reach
 
 **Why:** `.doc` is only really validated by Word, and *Copy rendered HTML* by an actual email
-client. Both have shipped on the strength of their MIME types and inlined styles alone.
+client. The clipboard path inlines styles per element and `tests/copy.test.mjs` measures borders
+and header shading by luminance; the Word path does not, which is T69.
 
-**Done when:** the Word export is opened in Word and the clipboard HTML pasted into Outlook,
-with the outcome recorded — tables keeping their borders and header shading is the specific
-thing at risk, since that is what the inlining exists for.
+**Done when:** the Word export is opened in Word and the clipboard HTML pasted into Outlook, with
+the outcome recorded — tables keeping their borders and header shading is the specific thing at
+risk, since that is what the inlining exists for. Best done **after** T69, or it measures a
+defect already known.
+
+---
+
+## P1 — Leverage
+
+*Five things no browser Markdown editor does well. Each is shippable alone, needs no server, and
+weakens no claim on `/about`.*
+
+### [ ] T70 · Edit a real file on disk, not a copy of it
+
+**Why:** every browser competitor traps your text in its own storage — StackEdit, Dillinger and
+markdownlivepreview all make you copy in and copy out. The File System Access API lets Markbeam
+open a `.md` from a folder, edit it, and save back to **that file**. It is the strongest
+expression of the promise the app already makes: nothing uploaded, and now nothing trapped
+either.
+
+**Traps, all of them design problems rather than API ones:**
+
+- **Chromium only.** Safari and Firefox have no `showOpenFilePicker`, so the existing
+  drop-and-download path stays as the fallback and the UI must not imply otherwise.
+- **The handle does not survive a reload by itself.** It can be kept in IndexedDB, but the
+  *permission* must be re-requested with a user gesture, so "reopen last file" is a prompt, not
+  magic. Designing that prompt is the actual work.
+- **`src/storage.js` owns persistence.** A file-backed document is a second source of truth
+  beside `markbeam:doc:<id>`, and the two must not silently diverge — decide up front whether
+  the file wins, the browser copy wins, or the app refuses and asks.
+
+**Done when:** a `.md` can be opened from disk, edited, saved back with `Ctrl+S`-adjacent
+ergonomics without clobbering the PDF shortcut, reopened after a reload behind one permission
+prompt, and a suite covers the save path with the picker stubbed. Browsers without the API must
+behave exactly as they do today.
+
+### [ ] T71 · Paste HTML and get Markdown
+
+**Why:** copying a table out of a webpage, a Google Doc or Confluence and pasting it into a
+Markdown editor is a daily act, and today it lands as plain text with the structure gone. People
+leave the app to convert it. Turndown is ~15 KB, runs locally, and none of the direct competitors
+does this.
+
+**Traps:**
+
+- The clipboard carries `text/html` **and** `text/plain`; taking the HTML flavour when present is
+  the whole feature, but pasting from another Markdown editor should keep the plain text
+  untouched — converting already-Markdown text mangles it.
+- Sanitise before converting. Pasted HTML is arbitrary, and this origin renders attacker-supplied
+  Markdown from share links; DOMPurify is already a dependency.
+- Images arrive as remote `<img src>`. Following them would fetch third-party URLs, which
+  `/about` says the app does not do — so either drop them, keep the URL as-is, or route through
+  the existing `src/images.js` path only for `data:` sources. Decide, and say so in the toast.
+
+**Done when:** pasting rich HTML produces sensible Markdown (headings, lists, links, code,
+tables), pasting plain text is unchanged, nothing is fetched from the network, and a suite covers
+both flavours plus the image decision.
+
+### [ ] T72 · A formatting bar above the phone keyboard
+
+**Why:** T64 and T68 were both mobile keyboard bugs, which is evidence people do use this on a
+phone — and on a phone the format toolbar is the least reachable part of the screen while the
+keyboard covers half of it. Bold, link, list, heading, code as a strip pinned above the keyboard
+is iA Writer's best idea, and no browser competitor bothers.
+
+**The trap that matters here more than anywhere:** a control that takes focus closes the keyboard
+and undoes T64 and T68. `src/ui/formatToolbar.js` already solves this with `pointerdown` +
+`preventDefault`, which is why its buttons do not steal the caret; the mobile bar must do the
+same, and the suite should assert focus stays on `textarea.inputarea` after a tap.
+
+Positioning comes from `visualViewport` — its `height` and `offsetTop` are what track the
+keyboard. That is legitimate here, unlike in T68, because we are placing an element rather than
+inferring intent.
+
+**Done when:** on a touch device with the keyboard open, a formatting strip sits directly above
+it, applies formatting without dismissing it, disappears when the keyboard does, and never
+appears on a mouse machine.
+
+### [ ] T73 · `[[wiki-links]]` between documents, and backlinks
+
+**Why:** the app already has multiple documents, folders, and cross-document search — everything
+a small knowledge base needs except the links. `[[Some document]]` resolving to another document,
+plus "what links here", is Obsidian's core value in a browser with no vault to set up. StackEdit
+and Dillinger have nothing like it.
+
+**Traps:**
+
+- The link must render through `createRenderer()` in `src/markdown/index.js` and survive
+  DOMPurify — a share link carries a stranger's Markdown into this origin, so a wiki-link must
+  never become an arbitrary `href`.
+- A link to a document that does not exist yet should be visibly different and offer to create
+  it, or the feature quietly does nothing on the most common first attempt.
+- Exports have to decide: a wiki-link in a PDF or an HTML file cannot resolve to browser storage,
+  so it becomes plain text or an anchor. Say which, in the same way `[TOC]` documents its
+  behaviour across exports.
+
+**Done when:** `[[title]]` links to a document by title, clicking one switches to it, a panel
+lists documents linking to the current one, unresolved links are distinguishable, and each export
+path has a stated behaviour with a test.
+
+### [ ] T74 · See what changed between two versions
+
+**Why:** `src/history.js` keeps up to twenty snapshots and the sheet lists them by time, but
+restoring is a leap of faith — you cannot see what you would lose. The same gap makes the
+auto-sync conflict rule (T49: never merge, keep both) *safe but unusable*: the app hands you two
+documents and no way to compare them.
+
+**No new dependency.** Monaco ships a diff editor and is already loaded from the CDN;
+`monaco.editor.createDiffEditor` against two models is the whole mechanism.
+
+**Traps:** the diff must be read-only and must not become a second editor with its own state; and
+it has to work for the conflict case, where the two sides are separate *documents* rather than
+two snapshots of one.
+
+**Done when:** any two snapshots of a document can be compared side by side, the conflict pair
+from auto-sync can be compared the same way, restoring from the diff view is one action, and a
+suite covers both entry points.
+
+---
+
+## P2 — The loop itself
+
+### [ ] T94 · The suite takes fifteen minutes because it runs one browser at a time
+
+**Why:** every `/work` and every `/ship` waits on it, and so does every push — CI has been taking
+16–18 minutes per run, of which the browser suite is nearly all. It is the single biggest tax on
+the loop this project actually runs.
+
+**Measured, on this machine:**
+
+- **68 browser launches per run** — 65 `withPage` calls plus 3 direct. Several suites launch
+  more than one of their own: `touch` starts a phone *and* a desktop, `install` starts three.
+  At 5–8s of startup, boot and Monaco load each, that is 6–9 minutes before a single assertion.
+- **`tests/run.mjs:106` is a plain `for` loop.** Suites run strictly serially, on one core.
+- Monaco is fetched from `cdn.jsdelivr.net` on every page load, so each launch pays a network
+  round trip.
+
+**Approach:** a worker pool in `tests/run.mjs` running 3–4 suites concurrently.
+
+**Traps, and the reason this is not a ten-line change:**
+
+- **Suites share one dev server and one origin, so they share `localStorage`.** `seedDocument()`
+  writes `markbeam:docs` and friends; two suites seeding at once would read each other's
+  documents and fail in ways that look like product bugs. Each worker needs its own Chrome
+  **user-data-dir**, which is what gives it a separate storage partition.
+- **The freshness pass must run once, before the pool starts**, not per worker — `refreshSources`
+  touches every file in `src/`, and `tooling` asserts nothing is older than 30s. Concurrent
+  sweeps would fight each other and that assertion.
+- **Output has to stay attributable.** Interleaved lines from four suites are unreadable; buffer
+  each suite's checks and print them as a block when it finishes, keeping the existing format.
+- **Failures must not become flaky-by-parallelism.** If a suite only passes when run alone, that
+  is a real isolation bug and the fix is isolation, not serialising it again quietly.
+- Heavy suites — `csp` (runs a full `vite build` inside itself), `pdf`, `math`, `present`,
+  `exportMenu` — are CPU-bound on rasterisation, so the pool should start those first rather
+  than leaving one straggler running alone at the end.
+
+**Done when:** `npm test` runs suites concurrently, the full run is at least twice as fast on a
+four-core machine, output is still one readable block per suite, a deliberately failing check is
+still attributed to the right suite, and three consecutive full runs agree — a parallel runner
+that is fast and occasionally wrong is worse than a slow one.
+
+### [ ] T95 · Four and a half minutes of the suite is `sleep()`
+
+**Why:** `tests/*.mjs` contains **267 seconds** of literal `sleep(...)` calls — `sleep(2500)`
+after every boot, `sleep(600)` after every palette command, `sleep(700)` after every export
+click. Not all of it executes in one run, but it is the second-largest block of wall clock after
+browser startup, and most of it waits for something that already finished.
+
+**`CLAUDE.md` already forbids this pattern** and explains why with a real failure: "`page.emulateMediaType(null)` resolving does not mean the page's `matchMedia` listeners have run.
+Anything depending on that must `waitForFunction` on the state it is about to measure, never
+`sleep`." The sleeps are slower *and* less reliable than the rule the repo already states.
+
+**Approach:** replace each fixed wait with a `waitForFunction` on the state the next line
+measures — the palette being open, the toast being present, `window.__downloads.length`, the
+export button's `disabled` flag going false. `tests/touch.test.mjs` and `tests/exportMenu.test.mjs`
+already do this in places and are the pattern to copy.
+
+**Traps:**
+
+- **A wait that never settles must fail, not hang.** `answerNextDialog()` had exactly this bug
+  and cost a 36-minute run that printed nothing (T67); every replacement needs a timeout that
+  turns into a failed assertion.
+- **Some sleeps are debounces, not laziness.** Mermaid renders on a 150ms debounce and autosave
+  runs on a much longer fuse; those waits are load-bearing and must become
+  `waitForFunction` on the *result*, not be deleted.
+- Do it suite by suite with a green run between, or a single sweep will produce a dozen
+  simultaneous flakes and no way to tell which change caused which.
+
+**Done when:** no `sleep()` remains that is waiting for a state the test could observe directly,
+the suites that keep one carry a comment saying what it is waiting for and why it cannot be
+observed, and the full run is measurably shorter with no new flakiness across three runs.
+
+
+---
+
+## P2 — Product depth
+
+*Individually smaller than P1, and each closes a gap a competitor either advertises or ignores.*
+
+### [ ] T75 · No spell-check, because Monaco turned the browser's off
+
+**Why:** Monaco disables native spellcheck on its hidden textarea, so a writing tool currently
+does not check spelling at all — the one thing every word processor has. A dictionary-based
+checker running locally (hunspell compiled to wasm, ~1 MB for `en_US`) fits the privacy claim
+exactly: no text leaves the browser.
+
+**Traps:** it must be lazy-loaded like KaTeX and Mermaid, or every first visit pays a megabyte
+for a feature most sessions never use; and it must skip code fences, inline code and URLs, or the
+underlining is noise. Decorations go through Monaco's decoration API, not the DOM.
+
+**Done when:** misspellings are underlined in prose only, a suggestion menu replaces a word, a
+personal dictionary persists through `src/storage.js`, and the dictionary is fetched only when
+the feature is first switched on.
+
+### [ ] T76 · Share links cannot be locked
+
+**Why:** `src/share.js` compresses the document into the URL fragment, which never reaches a
+server — but anyone with the link has the document. Encrypting the payload with a key held in a
+*second* fragment segment, or a passphrase, would make a leaked link useless on its own. Nobody
+in this category offers it, and it is a natural extension of the position the product already
+takes.
+
+**Traps:** WebCrypto only, no dependency; the key must never be sent to a server, which is
+automatic if it lives in the fragment; and the failure mode for a wrong passphrase has to be a
+clear message rather than a mangled document.
+
+**Done when:** a share link can be created with a passphrase, opening it prompts for one, a wrong
+answer fails cleanly, and the unencrypted form still works exactly as it does today.
+
+### [ ] T77 · Right-to-left documents are unusable
+
+**Why:** Arabic, Hebrew, Farsi and Urdu authors are badly served by every editor in this
+category, and at least one competitor advertises RTL as a headline feature. Monaco supports RTL
+text but the app never sets direction, so the editor gutter, the preview and the exports all
+assume left-to-right.
+
+**Traps:** direction is per document, not per app — a mixed corpus is normal; and the PDF
+exporter clones the preview into a sandbox, so whatever sets direction has to be carried into
+that clone or the export silently reverts.
+
+**Done when:** a document can be marked RTL, the editor and preview both honour it, exports and
+print carry it, and the setting persists per document.
+
+### [ ] T78 · No way in from Word
+
+**Why:** the app exports `.doc` but cannot read one, and "I have a Word document and want
+Markdown" is one of the most common searches in this space. `mammoth.js` converts `.docx` to HTML
+locally, which the T71 HTML-to-Markdown path then turns into Markdown — the two tasks compound.
+
+**Traps:** `.docx` only, not the legacy `.doc` the app itself exports; images inside the document
+arrive as base64 and hit `MAX_DOCUMENT_BYTES` in `src/documentLimits.js` immediately, so the
+1 MiB cap needs a decision — drop images, resize through `src/images.js`, or refuse with a clear
+message.
+
+**Done when:** a `.docx` dropped on the window becomes a Markdown document with headings, lists
+and tables intact, images are handled by a stated rule rather than by accident, and nothing is
+uploaded.
+
+### [ ] T79 · The PDF has no options
+
+**Why:** `src/export/pdf.js` hardcodes A4, 10 mm margins and portrait. Page size, margins,
+orientation, page numbers and a contents page are the most common asks of any document exporter,
+and the constants are already isolated at the top of that file.
+
+**Traps:** `computePageOffsets()` and `groupPagesIntoBands()` are derived from those constants —
+`MAX_BAND_PX` exists because a canvas over ~16384px silently returns blank — so changing page
+geometry means re-deriving the band maths, not just the paper name. `CLAUDE.md` records the
+measurements to re-check.
+
+**Done when:** a small options sheet offers page size, orientation, margins and optional page
+numbers; the banding maths still holds for a 69-page document; and `tests/pdf.test.mjs` covers a
+non-A4 size end to end.
+
+### [ ] T80 · Every document starts empty
+
+**Why:** the audience writes READMEs, ADRs, changelogs, specs and release notes — the same
+handful of shapes, every time. Templates turn a blank page into a starting point, and no
+competitor in this category ships any.
+
+**Traps:** they belong beside the welcome document as content, not code, and must not become a
+second place feature descriptions can rot (`src/defaultDocument.js` already carries that
+burden). A template must open as a **new document**, never overwrite the current one.
+
+**Done when:** *New from template…* offers a handful of real templates, each opens as its own
+document, and adding one is editing a single file.
+
+### [ ] T81 · No Vim keybindings
+
+**Why:** `monaco-vim` is a small dependency and the audience that wants this wants it strongly
+enough to choose an editor over it. Cheap leverage against Dillinger and markdownlivepreview,
+which have none.
+
+**Traps:** it must be off by default and lazily imported, or every visitor pays for it; and the
+palette's `Ctrl+K` shortcut is registered as a Monaco command precisely because Monaco swallows
+chords — the Vim layer will fight for keys, so the interaction with `src/editor/index.js` needs
+testing rather than hoping.
+
+**Done when:** Vim mode toggles from the palette, persists, does not break `Ctrl+K` or the
+formatting shortcuts, and costs nothing when off.
+
+### [ ] T82 · YAML front matter is treated as text
+
+**Why:** Hugo, Jekyll, Astro and every static site generator put `---` delimited YAML at the top
+of a file. Markbeam renders it as a horizontal rule and a paragraph of noise, which is wrong on
+screen and wrong in every export.
+
+**The trap is `---` itself**, which is already overloaded three ways: a slide break for
+presentation mode, a setext heading underline, and a fence in code blocks. `splitIntoSlides()`
+splits on rendered `<hr>` for exactly that reason — front matter must be recognised *before* the
+renderer sees it, and only at position zero.
+
+**Done when:** front matter at the top of a document is parsed rather than rendered, shown in a
+collapsed strip, excluded from every export body, and a `---` anywhere else still behaves as it
+does today, with the slide suite proving it.
+
+### [ ] T83 · Nothing checks the document for broken links
+
+**Why:** the daily pain of README and docs authors is a link that 404s, an image reference with
+no file, a heading anchor that moved. `markdownlint` rules plus a local reference check catch
+these without touching the network.
+
+**Traps:** the worker route is closed — `MonacoEnvironment.getWorker` returns a no-op `Proxy`, so
+linting runs on the main thread and must be debounced like Mermaid's 150 ms or it will fight
+typing; and remote URLs cannot be verified without fetching them, which the privacy claim
+forbids, so the check covers **relative** links, image references and internal anchors only, and
+says so.
+
+**Done when:** a problems panel lists broken internal links, missing image references and
+duplicate headings, clicking one jumps to the line, and nothing is fetched.
+
+### [ ] T84 · Publishing means copying a link, not sharing a page
+
+**Why:** T47 publishes a Gist, but the reader gets Gist's UI rather than the rendered document. A
+"publish" that produces a *rendered* page — a Gist plus a viewer URL, or a commit to a GitHub
+Pages branch — is what HackMD and Notion are chosen for, and both routes reuse the token and
+client already built.
+
+**Traps:** it must not become a hosting service; the content lives in the reader's GitHub
+account, not ours. And a published document is a disclosure that cannot be withdrawn by deleting
+the link, exactly as `createGist` already argues about visibility.
+
+**Done when:** publishing produces a URL that renders the document for someone without the app,
+the destination is the user's own account, and the irreversibility is stated before the click.
+
+### [ ] T85 · Pasting a spreadsheet gives you nothing
+
+**Why:** copying cells from Excel, Google Sheets or a CSV file and pasting into a Markdown editor
+should produce a table. It currently produces tab-separated noise that the user then formats by
+hand — and the app already has `src/markdown/table.js` to format one properly.
+
+**Trap:** the clipboard's `text/plain` for spreadsheet data is TSV, but a pasted CSV file is
+comma-separated and quoting differs; and a cell containing a pipe must be escaped exactly as
+T50 established, or the table breaks on the first paste.
+
+**Done when:** pasting TSV or CSV produces an aligned GFM table with pipes escaped, ordinary text
+pastes are untouched, and the table suite covers the escaping.
+
+### [ ] T86 · Images live in the document, which is why documents are capped
+
+**Why:** `src/images.js` embeds base64 WebP, and `MAX_DOCUMENT_BYTES` caps a document at 1 MiB
+*because* of that — one screenshot would otherwise evict every autosave snapshot. For anyone who
+has connected a repository, the images could go there instead and the document could carry a
+path, lifting the cap for the people most likely to hit it.
+
+**Traps:** only for bound documents, and only after a manual save has created the binding —
+exactly the rule T49 established for auto-sync, and for the same reason: nothing is sent until
+the user has already sent something. A document with repository-hosted images stops being
+self-contained, so the share link and the exports each need a stated behaviour.
+
+**Done when:** with a repository connected, pasted images are committed alongside the document
+and referenced by path; without one, behaviour is unchanged; and the trade-off is visible in the
+UI rather than discovered when a share link shows broken images.
+
+### [ ] T87 · Mermaid is the only diagram language
+
+**Why:** Graphviz `dot` is the other notation technical writers actually use, and `viz.js` runs
+it entirely in the browser — the same shape as the Mermaid integration, which is already lazy,
+debounced and theme-aware.
+
+**Trap:** the whole Mermaid discipline applies, and it is written down for a reason —
+`suppressErrorRendering`, deterministic render ids, the version guard re-checked after every
+`await`, and `dataset.mermaidSource` so a theme switch can re-render. A second engine that skips
+any of it reintroduces the stranded-container bug in a new place.
+
+**Done when:** a ```` ```dot ```` fence renders, follows the theme, survives export and print by
+the same route as Mermaid, and the render path carries the same guards.
+
+### [ ] T88 · Nothing helps you concentrate
+
+**Why:** focus mode (dim everything but the current sentence or paragraph) and typewriter
+scrolling (keep the caret vertically centred) are the two features writing tools are chosen for,
+and iA Writer and Typora both charge for them.
+
+**Trap:** both are decoration and scroll behaviour, so they must not fight `scrollSync` in
+`src/main.js`, and typewriter scrolling has to be off by default — imposed on someone who did not
+ask, it feels broken.
+
+**Done when:** both toggle from the palette, persist, and leave sync scroll working.
+
+### [ ] T89 · Reading settings mean writing CSS
+
+**Why:** T46 gives full control through custom CSS, which is the right tool for a house style and
+the wrong one for "make the text bigger". Font size, line width and font family are the three
+things readers change, and asking for a stylesheet to change them is a wall in front of a common
+need.
+
+**Done when:** a small panel adjusts preview font size, measure and family; the values persist;
+they apply to the preview and to the HTML and Word exports as the custom stylesheet does; and the
+PDF continues to exclude user styling for the reason `CLAUDE.md` records.
+
+### [ ] T90 · Documents can be foldered but not tagged
+
+**Why:** folders force one place per document. Tags let one document be *specs* and *2026* and
+*draft* at once, and combined with the existing cross-document search they turn the document list
+into something searchable by facet rather than by name.
+
+**Trap:** tags in front matter and tags in app state are two sources of truth; pick one. Front
+matter is portable and survives export, which argues for it, and T82 is where that parsing lands.
+
+**Done when:** tags can be added to a document, the list filters by them, they survive export,
+and the search sheet can combine a tag with a query.
+
+### [ ] T91 · The outline can navigate but not restructure
+
+**Why:** the outline lists headings and jumps to them. Dragging a heading to reorder the section
+under it is how people restructure a long document, and doing it by hand means cutting and
+pasting hundreds of lines with the fold state lost.
+
+**Trap:** a heading's section runs to the next heading of the same or higher level, and code
+fences can contain `#` — the same class of ambiguity `splitIntoSlides()` resolves by reading
+rendered output rather than source text.
+
+**Done when:** dragging a heading in the outline moves its whole section, the edit is one undo
+step through `executeEdits` as T50 established, and `#` inside a fence is never mistaken for a
+heading.
+
+### [ ] T92 · Two documents cannot be seen at once
+
+**Why:** comparing a spec with its changelog, or writing from notes, means switching back and
+forth today. A second editor pane beside the first — not a diff, two live documents — is what
+people do with two windows and cannot do here.
+
+**Trap:** `src/main.js` holds one editor, one `activeDocId`, and one autosave path. A second
+pane doubles all three, and the history and trash budgets are per document, so the state model
+has to be settled before any UI is drawn.
+
+**Done when:** two documents can be edited side by side, each autosaves independently, the divider
+and view modes still behave, and closing the second pane leaves the first exactly as it was.
+
+---
+
+## P2 — Bigger bets, decide before building
+
+### [ ] T93 · Everyone is shipping AI, and this app promises the opposite
+
+**Decide before writing code.** Rewrite, summarise, explain-this-error and generate-a-table are
+now table stakes in editors, and their absence is the most common "why not this one" for a
+mainstream audience. But the pitch on `/about` is that nothing you write leaves the browser
+unless you send it, and an assistant is by definition text leaving the browser.
+
+**The only shape that fits** is bring-your-own-key, opt-in per action, off by default, with the
+destination named in the UI at the moment of use — and `/about` rewritten in the same commit, the
+way T37 and T49 rewrote it when sync and auto-sync arrived. `src/remoteAuth.js` already holds the
+rules for a credential that must never be logged, toasted, or written into a document.
+
+**The alternative worth pricing:** a small local model through WebGPU keeps the promise intact
+and costs a large download and a much weaker result. That is a real trade, not an obvious one.
+
+**Done when:** the decision is recorded here with its reasoning — including a decision *not* to
+build it, which is a legitimate outcome and should be written down as firmly as the alternative.
+
 
 ---
 
@@ -43,6 +512,13 @@ if the project ever decides to run a server, and revisit `/about` in the same br
 one gap that is not a feature. Real-time collaboration needs a server, accounts, identity and
 conflict-free replicated state; comments need all of that plus a permission model. That is a
 different product built on a different persistence model, not something to add to this one.
+
+*One variant genuinely changes the arithmetic, recorded so nobody has to rediscover it:* a
+local-first CRDT (Yjs) over **WebRTC** keeps the document peer-to-peer, so no server ever stores
+or sees it. The cost is a **signalling server** to introduce peers — small, stateless, and never
+handling document text, but a server nonetheless, and `/about` would need rewriting the way T37
+and T49 rewrote it. Identity, permissions and comments remain out of reach regardless. Worth
+revisiting only if the project accepts running that one piece of infrastructure.
 
 **ABC musical notation.** StackEdit renders it. It is an entire rendering dependency for an
 audience that does not overlap with a developer-facing Markdown editor.
@@ -77,6 +553,71 @@ free and the entry should be revisited.
 ---
 
 ## Completed
+
+### [x] T69 · The Word export shipped CSS Word cannot read — 2026-09-01
+
+**Root cause:** `collectStyles()` in `src/export/document.js` embeds the app's **live
+stylesheets verbatim** — deliberately, so an exported file cannot drift from the preview. But
+those sheets are token-driven: `src/styles/preview.css` used `var(--…)` 92 times, including the
+table border and the header-row shading, plus one `color-mix()`.
+
+**Word's HTML engine resolves neither, and drops whole declarations it cannot parse.** So the
+`.doc` opened with no table borders and no header shading — while looking perfect in a browser,
+which is why nothing caught it. Found by reading the export path for T53 rather than by opening
+Word, and fixable without owning it.
+
+**Two wrong turns, both worth keeping because both look right:**
+
+1. **The obvious fix cannot work.** The plan said to resolve the variables from a probe element
+   carrying `data-theme="light"`. The light ramp is declared under `:root[data-theme='light']`,
+   and `:root` matches **only `<html>`** — a detached `<div data-theme="light">` inherits
+   whatever the live document is set to, which is dark most of the time. That export would have
+   baked dark colours into a file destined for white paper, silently. Flipping
+   `document.documentElement` for the duration is worse: it flashes the whole app.
+   Tokens are read from the **CSSOM** instead, with no DOM involvement.
+2. **The first implementation half-worked, which is the dangerous kind of wrong.** It cut
+   `var(--)` from 99 to 60 — and every survivor was a colour. The CSSOM **re-serialises
+   selectors**, so `[data-theme='light']` comes back as `[data-theme="light"]`, and string
+   equality matched only the base `:root` rule holding spacing and typography. An export that
+   is *mostly* resolved is exactly the failure this task is about. Matched by pattern now.
+
+`color-mix()` is handed to the browser through an offscreen probe rather than reimplemented:
+one use today, and mixing sRGB by hand is arithmetic with a subtly wrong answer at the end.
+
+**The asymmetry is deliberate and commented in the file.** `buildStandaloneHtml()` keeps the
+tokens, because that file is opened in a browser and browsers resolve them; only the Word path
+is flattened. A control assertion holds that line — without it, a change that flattened every
+export would look identical to the intended one.
+
+**Measured:** red first at `var(--) x99, color-mix x1` with no table border carrying a colour.
+Green after at `var(--) x0, color-mix x0`, and the CSS Word now receives reads
+`.mb-md table th, .mb-md table td { padding: 8px 12px; border: 1px solid #dde3ea; }` with
+`background: #eef1f5` on the header row — light-theme values, from a dark-themed app. The HTML
+export still carries all 99.
+
+### Verify vs reference — T69
+
+*On the reference* — https://markdownlivepreview.com has no Word export, so there is nothing to
+compare; this is a defect in a path only this app has.
+
+*On ours* — http://localhost:5173, and it takes about a minute:
+
+1. Write a table, then **Export → Word (.doc)**.
+2. Open the downloaded file in a text editor and search the `<style>` block for `var(`:
+
+   ```
+   grep -c "var(--" my-document.doc     # 0
+   grep -o "table th, [^}]*}" my-document.doc
+   # .mb-md table th, .mb-md table td { padding: 8px 12px; border: 1px solid #dde3ea; }
+   ```
+
+   Before this change the same grep returned 99 and the border read `1px solid var(--line-strong)`.
+3. Export as **HTML file** and grep the same way — that one still says `var(--)`, on purpose,
+   because a browser reads it.
+
+**What this task does not claim:** that the file renders correctly *in Word*. That is **T53**,
+it needs a desktop with Word and Outlook, and the borders are only the part that can be proven
+from here.
 
 ### [x] T68 · Dismissing the keyboard left the editor focused, so the next scroll re-opened it — 2026-09-01
 
